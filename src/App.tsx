@@ -86,7 +86,8 @@ export function App() {
     return () => window.removeEventListener('beforeprint', open);
   }, []);
 
-  const generated = useMemo(() => generatePrompts(business, count), [business, count]);
+  const canGenerate = business.category.trim() !== '' && business.city.trim() !== '';
+  const generated = useMemo(() => (canGenerate ? generatePrompts(business, count) : []), [business, count, canGenerate]);
   const prompts = customPrompts ?? generated;
   const cleanPrompts = sanitizePromptList(prompts);
   const errors = validateBusiness(business);

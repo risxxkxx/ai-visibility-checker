@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "dev:netlify": "netlify dev",
+    "dev:netlify": "npx netlify-cli dev",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "lint": "eslint .",

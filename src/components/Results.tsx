@@ -54,7 +54,9 @@ export function ScorePanel({ report, running }: { report: VisibilityReport; runn
               {p.label} <span className="score__weight">× {p.weight}</span>
             </dt>
             <dd>
-              <meter min={0} max={1} value={p.value} aria-label={`${p.label} ${pct(p.value)}`} />
+              <span className="score__bar" aria-hidden="true">
+                <span style={{ width: pct(p.value) }} />
+              </span>
               <span className="score__detail">
                 {pct(p.value)}, {p.detail.charAt(0).toLowerCase() + p.detail.slice(1)}
               </span>

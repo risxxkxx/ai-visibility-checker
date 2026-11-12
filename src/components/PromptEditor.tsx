@@ -46,6 +46,12 @@ export function PromptEditor({ prompts, edited, count, disabled, onCountChange, 
         you up by itself. Edit anything before you run.
       </p>
 
+      {prompts.length === 0 && !edited && (
+        <p className="prompt-editor__empty">
+          Fill in what customers look for and your city, and the prompts appear here.
+        </p>
+      )}
+
       <ol className="prompt-list">
         {prompts.map((p, i) => (
           <li key={i} className="prompt-list__item">
@@ -72,7 +78,7 @@ export function PromptEditor({ prompts, edited, count, disabled, onCountChange, 
           </li>
         ))}
       </ol>
-      {prompts.length < MAX_PROMPT_COUNT && (
+      {prompts.length < MAX_PROMPT_COUNT && (prompts.length > 0 || edited) && (
         <button type="button" className="link-button" onClick={add} disabled={disabled}>
           Add a prompt
         </button>

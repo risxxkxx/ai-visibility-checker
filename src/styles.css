@@ -373,6 +373,14 @@ select:disabled {
   margin-bottom: 1rem;
 }
 
+.prompt-editor__empty {
+  padding: 1.5rem 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+  text-align: center;
+}
+
 .count-picker {
   display: inline-flex;
   align-items: center;
@@ -698,9 +706,18 @@ select:disabled {
   gap: 0.15rem;
 }
 
-.score__part meter {
-  width: 100%;
+.score__bar {
+  display: block;
   height: 6px;
+  background: var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.score__bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
 }
 
 .score__detail {
@@ -1305,6 +1322,7 @@ select:disabled {
   .hl,
   .hero__brand,
   .score__marker span,
+  .score__bar span,
   .sov__bar span,
   .priority {
     print-color-adjust: exact;
