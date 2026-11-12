@@ -72,6 +72,8 @@ function matchName(text: string, textTokens: Token[], name: string): MentionResu
   return best;
 }
 
+const URL_OR_HOST_RE = /\bhttps?:\/\/\S+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi;
+
 const HOST_RE = /\b(?:https?:\/\/)?(?:www\.)?((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})\b/gi;
 
 /** Finds the business's domain written anywhere in the text. */
@@ -98,7 +100,9 @@ export interface MentionTarget {
  */
 export function detectMention(text: string, target: MentionTarget): MentionResult {
   if (!text) return NONE;
-  const tokens = tokenize(text);
+  // Hide URLs and hostnames from name matching (offsets are preserved), so
+  // "examplestudio.example" counts as a domain mention, not a name mention.
+  const tokens = tokenize(text.replace(URL_OR_HOST_RE, (m) => ' '.repeat(m.length)));
   let best: MentionResult = NONE;
   for (const name of [target.name, ...(target.aliases ?? [])]) {
     if (!name.trim()) continue;
