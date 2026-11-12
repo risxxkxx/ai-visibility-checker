@@ -109,6 +109,7 @@ export interface RecommendationInput {
 }
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
+const r1 = (n: number) => Math.round(n * 10) / 10;
 
 export function buildRecommendations(input: RecommendationInput): Recommendation[] {
   const { business, analyses, score, shareOfVoice } = input;
@@ -148,7 +149,7 @@ export function buildRecommendations(input: RecommendationInput): Recommendation
   // Google Business Profile: the main local signal; always worth checking.
   if (m < 0.5) add('google-business-profile', 'high', `${named} Assistants lean on map and profile data for local questions.`);
   else if (avgPos === null || avgPos > 3)
-    add('google-business-profile', 'medium', `${named} You are named but rarely near the top${avgPos ? ` (average rank ${avgPos})` : ''}.`);
+    add('google-business-profile', 'medium', `${named} You are named but rarely near the top${avgPos ? ` (average rank ${r1(avgPos)})` : ''}.`);
   else add('google-business-profile', 'low', `${named} Keep the profile current to hold your position.`);
 
   // Structured data.
@@ -169,11 +170,11 @@ export function buildRecommendations(input: RecommendationInput): Recommendation
       'reviews',
       'high',
       `${leader.name} was named ${leader.mentions} times against your ${you?.mentions ?? 0}${
-        leader.averagePosition !== null ? `, at average rank ${leader.averagePosition}` : ''
+        leader.averagePosition !== null ? `, at average rank ${r1(leader.averagePosition)}` : ''
       }. Review volume and recency are a common reason one local business is preferred.`,
     );
   } else if (avgPos !== null && avgPos > 2) {
-    add('reviews', 'medium', `Your average rank when listed is ${avgPos}. More recent reviews help move up.`);
+    add('reviews', 'medium', `Your average rank when listed is ${r1(avgPos)}. More recent reviews help move up.`);
   } else if (m < 0.5) {
     add('reviews', 'medium', `${named} Reviews give assistants independent evidence that you exist and are good.`);
   }

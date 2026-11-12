@@ -85,7 +85,7 @@ export function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
   for (const m of text.matchAll(WORD_RE)) {
     const raw = m[0];
-    const key = skeletonWord(raw.replace(/['’]/g, ''));
+    const key = skeletonWord(raw.replace(/['’]s$/i, '').replace(/['’]/g, ''));
     if (!key) continue;
     const start = m.index ?? 0;
     tokens.push({ key, raw, start, end: start + raw.length });

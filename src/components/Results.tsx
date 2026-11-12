@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { AnswerAnalysis, EngineAnswer, EngineId, VisibilityReport } from '../lib/types.ts';
 import { ENGINE_LABELS } from '../lib/types.ts';
 import { WEIGHTS } from '../lib/scoring.ts';
@@ -13,6 +13,7 @@ const BAND_COPY: Record<VisibilityReport['score']['band'], string> = {
 };
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
+const rank = (n: number | null) => (n === null ? '–' : n.toFixed(1).replace(/\.0$/, ''));
 
 export function ScorePanel({ report, running }: { report: VisibilityReport; running: boolean }) {
   const s = report.score;
@@ -22,7 +23,7 @@ export function ScorePanel({ report, running }: { report: VisibilityReport; runn
       label: 'Position',
       value: s.positionScore,
       weight: WEIGHTS.position,
-      detail: s.averagePosition === null ? 'Never ranked in a list' : `Average rank ${s.averagePosition}`,
+      detail: s.averagePosition === null ? 'Never ranked in a list' : `Average rank ${rank(s.averagePosition)}`,
     },
     {
       label: 'Engine coverage',
@@ -87,6 +88,15 @@ export function ResultsMatrix({ report, running }: { report: VisibilityReport; r
   const [selected, setSelected] = useState<CellKey | null>(null);
   const active = selected && byKey.has(selected) ? selected : (firstNamed ?? [...byKey.keys()][0] ?? null);
   const current = active ? byKey.get(active) : undefined;
+  const viewerRef = useRef<HTMLDivElement | null>(null);
+
+  const select = (key: CellKey) => {
+    setSelected(key);
+    // On narrow screens the answer sits below the table, so bring it into view.
+    if (window.matchMedia('(max-width: 1080px)').matches) {
+      requestAnimationFrame(() => viewerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  };
 
   return (
     <section className="matrix-section" aria-labelledby="matrix-title">
@@ -123,7 +133,7 @@ export function ResultsMatrix({ report, running }: { report: VisibilityReport; r
                         aria-pressed={active === key}
                         aria-label={`${ENGINE_LABELS[e]}, prompt ${p + 1}: ${hit ? label.title : pending ? 'waiting' : 'not run'}`}
                         title={label.title}
-                        onClick={() => setSelected(key)}
+                        onClick={() => select(key)}
                       >
                         {hit ? label.text : ''}
                       </button>
@@ -140,7 +150,9 @@ export function ResultsMatrix({ report, running }: { report: VisibilityReport; r
           failed
         </p>
       </div>
-      <AnswerViewer report={report} entry={current} />
+      <div ref={viewerRef} className="viewer-anchor">
+        <AnswerViewer report={report} entry={current} />
+      </div>
     </section>
   );
 }
@@ -242,7 +254,7 @@ export function ShareOfVoice({ report }: { report: VisibilityReport }) {
                 {r.mentions}
               </td>
               <td>{pct(r.share)}</td>
-              <td>{r.averagePosition ?? '–'}</td>
+              <td>{rank(r.averagePosition)}</td>
             </tr>
           ))}
         </tbody>
@@ -301,7 +313,7 @@ export function Recommendations({ report }: { report: VisibilityReport }) {
       <ol className="recs__list">
         {report.recommendations.map((r) => (
           <li key={r.id} className={`rec rec--${r.priority}${done.has(r.id) ? ' is-done' : ''}`}>
-            <details>
+            <details open={r.priority === 'high'}>
               <summary>
                 <input
                   type="checkbox"

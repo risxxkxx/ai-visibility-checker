@@ -8,6 +8,7 @@ import { fetchEngines, runCheck } from './lib/client.ts';
 import { BusinessForm } from './components/BusinessForm.tsx';
 import { PromptEditor } from './components/PromptEditor.tsx';
 import { ExportBar } from './components/ExportBar.tsx';
+import { buildDemoReport } from './demo/exampleStudio.ts';
 import {
   PrintTranscripts,
   Recommendations,
@@ -52,7 +53,7 @@ interface RunState {
 
 export function App() {
   const [business, setBusiness] = useState<BusinessInput>(loadBusiness);
-  const [formKey] = useState(0);
+  const [demo, setDemo] = useState<VisibilityReport | null>(null);
   const [count, setCount] = useState(DEFAULT_PROMPT_COUNT);
   const [customPrompts, setCustomPrompts] = useState<string[] | null>(null);
   const [engines, setEngines] = useState<EngineStatus[] | null>(null);
@@ -128,6 +129,7 @@ export function App() {
       answers: [],
       startedAt: new Date().toISOString(),
     };
+    setDemo(null);
     setRun(snapshot);
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     try {
@@ -147,7 +149,12 @@ export function App() {
 
   const expected = run ? run.prompts.length * run.engines.length : 0;
   const received = run?.answers.length ?? 0;
-  const view = report;
+  const view = demo ?? report;
+
+  const showDemo = () => {
+    setDemo(buildDemoReport());
+    requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   return (
     <div className="page">
@@ -189,7 +196,6 @@ export function App() {
 
       <div className="setup">
         <BusinessForm
-          key={formKey}
           value={business}
           errors={errors}
           showErrors={showErrors}
@@ -212,7 +218,8 @@ export function App() {
           {engines === null && <p className="muted">Checking which engines are set up…</p>}
           {engines !== null && available.length === 0 && (
             <p className="runbar__notice">
-              No AI engines are configured on this deployment. Add an API key (see README) to run live checks.
+              No AI engines are configured on this deployment, so live checks are off. Add an API key (see README), or
+              open the demo report to see what a result looks like.
             </p>
           )}
           {available.map((e) => (
@@ -230,6 +237,15 @@ export function App() {
         </div>
         <div className="runbar__action">
           {showErrors && !formValid && <p className="runbar__error">Fill in the highlighted fields first.</p>}
+          {!running && !demo && (
+            <button
+              type="button"
+              className={available.length === 0 && engines !== null ? 'button' : 'button button--ghost'}
+              onClick={showDemo}
+            >
+              Open demo report
+            </button>
+          )}
           {running ? (
             <button type="button" className="button button--ghost" onClick={stop}>
               Stop
@@ -254,7 +270,22 @@ export function App() {
 
       <div ref={resultsRef} className="results-anchor" />
 
-      {run && (
+      {demo && (
+        <div className="demo-banner" role="note">
+          <div>
+            <strong>Demo data</strong>
+            <p>
+              Example Studio and its competitors are fictional. These answers were written by hand to show how the report
+              works. They did not come from Claude, ChatGPT or Perplexity.
+            </p>
+          </div>
+          <button type="button" className="button button--light" onClick={() => setDemo(null)}>
+            Close demo
+          </button>
+        </div>
+      )}
+
+      {run && !demo && (
         <div className="run-status" role="status">
           {run.status === 'running' && (
             <>
@@ -270,23 +301,24 @@ export function App() {
       )}
 
       {view && (
-        <main className="results" key={view.generatedAt} aria-label="Results">
+        <main className={`results${view.demo ? ' results--demo' : ''}`} key={view.generatedAt} aria-label={view.demo ? 'Demo results' : 'Results'}>
           <div className="results__head">
             <h2 className="results__summary">
+              {view.demo && <span className="demo-tag">Demo data</span>}
               <mark className="hero__brand">{view.business.name}</mark> was named in {view.score.mentionedCount} of{' '}
               {view.score.answered} answers.
             </h2>
-            <ExportBar report={view} disabled={running} />
+            <ExportBar report={view} disabled={running && !view.demo} />
           </div>
           <div className="results__top">
-            <ScorePanel report={view} running={running} />
-            <ResultsMatrix report={view} running={running} />
+            <ScorePanel report={view} running={running && !view.demo} />
+            <ResultsMatrix report={view} running={running && !view.demo} />
           </div>
           <div className="results__grid">
             <ShareOfVoice report={view} />
             <SourcesPanel report={view} />
           </div>
-          {!running && <Recommendations report={view} />}
+          {(!running || view.demo) && <Recommendations report={view} />}
           <PrintTranscripts report={view} />
         </main>
       )}

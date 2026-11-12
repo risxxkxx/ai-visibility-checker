@@ -14,6 +14,7 @@ export function escapeHtml(value: string): string {
 
 const e = escapeHtml;
 const pct = (n: number) => `${Math.round(n * 100)}%`;
+const rank = (n: number | null) => (n === null ? '–' : String(Math.round(n * 10) / 10));
 
 export function reportFileName(report: VisibilityReport, ext: 'json' | 'html'): string {
   const slug =
@@ -67,7 +68,7 @@ export function reportToHtml(report: VisibilityReport): string {
           (r) =>
             `<tr${r.isYou ? ' class="you"' : ''}><th>${e(r.name)}${r.isYou ? ' (you)' : ''}</th><td>${r.mentions}</td><td>${pct(
               r.share,
-            )}</td><td>${r.averagePosition ?? '–'}</td></tr>`,
+            )}</td><td>${rank(r.averagePosition)}</td></tr>`,
         )
         .join('')}</tbody>
     </table>`;
@@ -161,7 +162,7 @@ export function reportToHtml(report: VisibilityReport): string {
 <body>
 <header>
   <h1>AI visibility report: ${e(b.name)}</h1>
-  <p class="muted">${e(b.category)} in ${e(b.city)}${b.country ? `, ${e(b.country)}` : ''}${b.domain ? ` · ${e(b.domain)}` : ''} · ${e(date)}</p>
+  <p class="muted">${e(b.category)} in ${e(b.city)}${b.country ? `, ${e(b.country)}` : ''}${b.domain ? `. Website: ${e(b.domain)}` : ''}<br>Run on ${e(date)}</p>
 </header>
 ${demoNote}
 <h2>Score</h2>
@@ -169,7 +170,7 @@ ${demoNote}
   <div class="num">${s.score}<small>/100</small></div>
   <dl>
     <dt>Mention rate (× ${WEIGHTS.mention})</dt><dd>${pct(s.mentionRate)}, ${s.mentionedCount} of ${s.answered} answers</dd>
-    <dt>Position (× ${WEIGHTS.position})</dt><dd>${pct(s.positionScore)}${s.averagePosition !== null ? `, average rank ${s.averagePosition}` : ''}</dd>
+    <dt>Position (× ${WEIGHTS.position})</dt><dd>${pct(s.positionScore)}${s.averagePosition !== null ? `, average rank ${rank(s.averagePosition)}` : ''}</dd>
     <dt>Engine coverage (× ${WEIGHTS.coverage})</dt><dd>${pct(s.engineCoverage)}, ${s.enginesMentioning} of ${s.enginesAnswered} engines</dd>
   </dl>
 </div>

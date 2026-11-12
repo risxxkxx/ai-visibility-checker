@@ -839,9 +839,13 @@ select:disabled {
   font-size: 0.75rem;
 }
 
-.viewer {
+.viewer-anchor {
   position: sticky;
   top: 1rem;
+  scroll-margin-top: 1rem;
+}
+
+.viewer {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-panel);
@@ -1153,6 +1157,19 @@ select:disabled {
   color: var(--ink-2);
 }
 
+.demo-tag {
+  display: block;
+  width: fit-content;
+  font-family: var(--font-body);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.5rem;
+  border: 2px dashed var(--ink);
+  border-radius: 6px;
+}
+
 /* footer */
 
 .footer {
@@ -1184,8 +1201,10 @@ select:disabled {
   .matrix-section {
     grid-template-columns: 1fr;
   }
-  .viewer {
+  .viewer-anchor {
     position: static;
+  }
+  .viewer {
     max-height: none;
   }
 }
@@ -1213,6 +1232,12 @@ select:disabled {
 }
 
 @media (max-width: 480px) {
+  .cell {
+    min-width: 3.2rem;
+  }
+  .matrix td {
+    width: auto;
+  }
   .field-row {
     grid-template-columns: 1fr;
   }
@@ -1252,7 +1277,7 @@ select:disabled {
   .setup,
   .runbar,
   .run-status,
-  .viewer,
+  .viewer-anchor,
   .export-bar,
   .demo-banner button,
   .rec summary input,
