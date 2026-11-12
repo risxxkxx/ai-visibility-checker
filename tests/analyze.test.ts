@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { analyzeAnswer, topCitedDomains } from '../src/lib/analyze.ts';
 import type { EngineAnswer } from '../src/lib/types.ts';
 import { business } from './fixtures.ts';
+import { highlight, plainAnswer } from '../src/lib/highlight.ts';
+import { splitList, validateBusiness } from '../src/lib/validation.ts';
 
 function answer(text: string, overrides: Partial<EngineAnswer> = {}): EngineAnswer {
   return {
@@ -68,5 +70,35 @@ describe('topCitedDomains', () => {
       { domain: 'clutch.co', count: 2 },
       { domain: 'x.test', count: 1 },
     ]);
+  });
+});
+
+
+describe('highlight', () => {
+  it('marks brand and competitor occurrences without overlaps', () => {
+    const segs = highlight('Example Studio and example studio beat Studio Lumen.', [
+      { text: 'Example Studio', kind: 'you' },
+      { text: 'Studio', kind: 'competitor' },
+      { text: 'Studio Lumen', kind: 'competitor' },
+    ]);
+    expect(segs.filter((s) => s.kind).map((s) => [s.text, s.kind])).toEqual([
+      ['Example Studio', 'you'],
+      ['example studio', 'you'],
+      ['Studio Lumen', 'competitor'],
+    ]);
+    expect(segs.map((s) => s.text).join('')).toBe('Example Studio and example studio beat Studio Lumen.');
+  });
+
+  it('strips markdown emphasis and headings', () => {
+    expect(plainAnswer('### Top\n1. **Example Studio**')).toBe('Top\n1. Example Studio');
+  });
+});
+
+describe('validation', () => {
+  it('splits lists and validates the business form', () => {
+    expect(splitList('A, B\nA,, C', 5, 80)).toEqual(['A', 'B', 'C']);
+    expect(validateBusiness(business())).toEqual({});
+    const errors = validateBusiness(business({ name: ' ', domain: 'not a domain' }));
+    expect(Object.keys(errors).sort()).toEqual(['domain', 'name']);
   });
 });

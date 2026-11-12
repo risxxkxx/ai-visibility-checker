@@ -1,8 +1,9 @@
 import type { EngineId } from '../src/lib/types.ts';
 import { ENGINE_IDS } from '../src/lib/types.ts';
 import { MAX_PROMPT_COUNT } from '../src/lib/prompts.ts';
+import { MAX_PROMPT_LENGTH } from '../src/lib/limits.ts';
 
-export const MAX_PROMPT_LENGTH = 300;
+export { MAX_PROMPT_LENGTH };
 export const MAX_BODY_BYTES = 4_096;
 export const MAX_ENGINES = ENGINE_IDS.length;
 export const MAX_PROMPTS_PER_RUN = MAX_PROMPT_COUNT;
