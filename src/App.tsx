@@ -7,6 +7,7 @@ import { buildReport } from './lib/report.ts';
 import { fetchEngines, runCheck } from './lib/client.ts';
 import { BusinessForm } from './components/BusinessForm.tsx';
 import { PromptEditor } from './components/PromptEditor.tsx';
+import { ExportBar } from './components/ExportBar.tsx';
 import {
   PrintTranscripts,
   Recommendations,
@@ -270,10 +271,13 @@ export function App() {
 
       {view && (
         <main className="results" key={view.generatedAt} aria-label="Results">
-          <h2 className="results__summary">
-            <mark className="hero__brand">{view.business.name}</mark> was named in {view.score.mentionedCount} of{' '}
-            {view.score.answered} answers.
-          </h2>
+          <div className="results__head">
+            <h2 className="results__summary">
+              <mark className="hero__brand">{view.business.name}</mark> was named in {view.score.mentionedCount} of{' '}
+              {view.score.answered} answers.
+            </h2>
+            <ExportBar report={view} disabled={running} />
+          </div>
           <div className="results__top">
             <ScorePanel report={view} running={running} />
             <ResultsMatrix report={view} running={running} />

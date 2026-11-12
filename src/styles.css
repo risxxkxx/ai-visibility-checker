@@ -1114,6 +1114,14 @@ select:disabled {
 
 /* export + demo */
 
+.results__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem 2rem;
+  flex-wrap: wrap;
+}
+
 .export-bar {
   display: flex;
   gap: 0.6rem;
