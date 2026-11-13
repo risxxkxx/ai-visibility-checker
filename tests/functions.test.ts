@@ -9,7 +9,7 @@ const ctx = (ip: string) => ({ ip }) as unknown as Context;
 const post = (body: unknown, headers: Record<string, string> = {}) =>
   new Request('https://app.test/api/ask', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', 'x-access-code': 'test-access-code', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -19,7 +19,10 @@ beforeAll(async () => {
   process.env.ANTHROPIC_API_KEY = '';
   process.env.GEMINI_API_KEY = 'AIza-test-gemini-key-000000000000';
   process.env.RATE_LIMIT_REQUESTS = '3';
-  ask = (await import('../netlify/functions/ask.ts')).default as Handler;
+  process.env.ACCESS_CODE = 'test-access-code';
+  const { createAskHandler } = await import('../netlify/functions/ask.ts');
+  const { memoryCounterStore } = await import('../server/budget.ts');
+  ask = createAskHandler({ store: memoryCounterStore() }) as Handler;
   engines = (await import('../netlify/functions/engines.ts')).default as () => Promise<Response>;
 });
 

@@ -4,6 +4,9 @@ import { createAuditHandler, type FetchPage } from '../netlify/functions/audit.t
 import { GuardError, type SafeFetchResult } from '../server/audit/ssrf.mjs';
 import { parsePsiResponse } from '../server/audit/psi.mjs';
 import { RateLimiter } from '../server/guard.ts';
+import { memoryCounterStore } from '../server/budget.ts';
+
+const CODE = 'test-access-code';
 import type { SiteAudit } from '../src/lib/types.ts';
 
 const html = readFileSync(new URL('./fixtures/geo-site.html', import.meta.url), 'utf8');
@@ -13,7 +16,7 @@ const NOW = () => new Date('2026-11-13T10:00:00Z');
 const post = (body: unknown, headers: Record<string, string> = {}) =>
   new Request('https://app.test/api/audit', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
+    headers: { 'content-type': 'application/json', 'x-access-code': CODE, ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -47,7 +50,7 @@ describe('POST /api/audit', () => {
       'https://primer.example/sitemap_index.xml': { contentType: 'application/xml', body: '<?xml version="1.0"?><sitemapindex/>' },
     });
     const psiRunner = vi.fn();
-    const handler = createAuditHandler({ fetchPage, psiRunner, env: () => ({}), now: NOW, limiter: fresh() });
+    const handler = createAuditHandler({ fetchPage, psiRunner, env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(), now: NOW, limiter: fresh() });
     const res = await handler(post({ domain: 'https://www.Primer.example/contact' }));
     expect(res.status).toBe(200);
     const { audit } = (await res.json()) as { audit: SiteAudit };
@@ -66,7 +69,7 @@ describe('POST /api/audit', () => {
     const fetchPage = pages({ 'https://primer.example/': { body: html } });
     const psi = parsePsiResponse(psiFixture);
     const ok = vi.fn(async () => ({ psi: psi.ok ? psi.psi : null, reason: null }));
-    let handler = createAuditHandler({ fetchPage, psiRunner: ok, env: () => ({ PAGESPEED_API_KEY: 'K' }), now: NOW, limiter: fresh() });
+    let handler = createAuditHandler({ fetchPage, psiRunner: ok, env: () => ({ ACCESS_CODE: CODE, PAGESPEED_API_KEY: 'K' }), store: memoryCounterStore(), now: NOW, limiter: fresh() });
     let data = (await (await handler(post({ domain: 'primer.example' }))).json()) as { audit: SiteAudit };
     expect(ok).toHaveBeenCalledWith('https://primer.example/', { apiKey: 'K', timeoutMs: 20_000 });
     expect(data.audit.psiStatus).toBe('ok');
@@ -78,12 +81,12 @@ describe('POST /api/audit', () => {
     const boom = vi.fn(async () => {
       throw new Error('x');
     });
-    handler = createAuditHandler({ fetchPage, psiRunner: boom, env: () => ({ PAGESPEED_API_KEY: 'K' }), now: NOW, limiter: fresh() });
+    handler = createAuditHandler({ fetchPage, psiRunner: boom, env: () => ({ ACCESS_CODE: CODE, PAGESPEED_API_KEY: 'K' }), store: memoryCounterStore(), now: NOW, limiter: fresh() });
     data = (await (await handler(post({ domain: 'primer.example' }))).json()) as { audit: SiteAudit };
     expect(data.audit.psiStatus).toBe('failed');
 
     const skipped = vi.fn();
-    handler = createAuditHandler({ fetchPage, psiRunner: skipped, env: () => ({ PAGESPEED_API_KEY: 'K' }), now: NOW, limiter: fresh() });
+    handler = createAuditHandler({ fetchPage, psiRunner: skipped, env: () => ({ ACCESS_CODE: CODE, PAGESPEED_API_KEY: 'K' }), store: memoryCounterStore(), now: NOW, limiter: fresh() });
     data = (await (await handler(post({ domain: 'primer.example', pagespeed: false }))).json()) as { audit: SiteAudit };
     expect(skipped).not.toHaveBeenCalled();
     expect(data.audit.psiStatus).toBe('skipped');
@@ -94,14 +97,14 @@ describe('POST /api/audit', () => {
       'https://plain.example/': new GuardError('network', 'x'),
       'http://plain.example/': { body: '<title>Plain</title>' },
     });
-    const handler = createAuditHandler({ fetchPage, psiRunner: vi.fn(), env: () => ({}), now: NOW, limiter: fresh() });
+    const handler = createAuditHandler({ fetchPage, psiRunner: vi.fn(), env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(), now: NOW, limiter: fresh() });
     const { audit } = (await (await handler(post({ domain: 'plain.example' }))).json()) as { audit: SiteAudit };
     expect(audit.https).toBe(false);
     expect(audit.httpRedirectsToHttps).toBeNull();
   });
 
   it('rejects bad input, wrong methods, cross-origin calls and private targets', async () => {
-    const handler = createAuditHandler({ fetchPage: pages({}), psiRunner: vi.fn(), env: () => ({}), limiter: fresh() });
+    const handler = createAuditHandler({ fetchPage: pages({}), psiRunner: vi.fn(), env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(), limiter: fresh() });
     expect((await handler(new Request('https://app.test/api/audit'))).status).toBe(405);
     expect((await handler(post('{nope'))).status).toBe(400);
     expect((await handler(post({ domain: 42 }))).status).toBe(400);
@@ -123,7 +126,7 @@ describe('POST /api/audit', () => {
     ];
     for (const [error, status] of cases) {
       const fetchPage = pages({ 'https://x.example/': error, 'http://x.example/': error });
-      const handler = createAuditHandler({ fetchPage, psiRunner: vi.fn(), env: () => ({}), limiter: fresh() });
+      const handler = createAuditHandler({ fetchPage, psiRunner: vi.fn(), env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(), limiter: fresh() });
       const res = await handler(post({ domain: 'x.example' }));
       expect(res.status).toBe(status);
       expect(await res.text()).not.toContain('10.0.0.1');
@@ -134,14 +137,14 @@ describe('POST /api/audit', () => {
     let handler = createAuditHandler({
       fetchPage: pages({ 'https://x.example/': { skipped: 'content-type', contentType: 'application/pdf' } }),
       psiRunner: vi.fn(),
-      env: () => ({}),
+      env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(),
       limiter: fresh(),
     });
     expect((await handler(post({ domain: 'x.example' }))).status).toBe(422);
     handler = createAuditHandler({
       fetchPage: pages({ 'https://x.example/': { status: 403, body: '<html></html>' } }),
       psiRunner: vi.fn(),
-      env: () => ({}),
+      env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(),
       limiter: fresh(),
     });
     const res = await handler(post({ domain: 'x.example' }));
@@ -153,7 +156,7 @@ describe('POST /api/audit', () => {
     const handler = createAuditHandler({
       fetchPage: pages({ 'https://primer.example/': { body: html } }),
       psiRunner: vi.fn(),
-      env: () => ({}),
+      env: () => ({ ACCESS_CODE: CODE }), store: memoryCounterStore(),
       limiter: new RateLimiter(2, 60_000),
     });
     const statuses: number[] = [];

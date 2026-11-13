@@ -229,6 +229,10 @@ All variables are read by the Netlify Functions only. None is sent to the browse
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `ACCESS_CODE` | | **Required for live checks.** At least 8 characters. The browser sends it in the `x-access-code` header; without a configured code, `/api/ask` and `/api/audit` refuse every call (fail closed) |
+| `MONTHLY_LIMIT_GEMINI` | `4500` | Monthly request cap for Gemini (below the 5,000 grounded requests a month in Gemini's paid tier). `0` disables the engine |
+| `MONTHLY_LIMIT_OPENAI` / `_ANTHROPIC` / `_PERPLEXITY` | `1000` | Monthly request caps for the paid engines |
+| `MONTHLY_LIMIT_AUDIT` | `300` | Monthly cap on website audits |
 | `ANTHROPIC_API_KEY` | | Enables Claude |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Claude model ID |
 | `OPENAI_API_KEY` | | Enables ChatGPT (OpenAI Responses API) |
@@ -256,12 +260,14 @@ Default model IDs were checked against the providers' documentation in November 
 
 1. Push the repository to GitHub.
 2. In Netlify, choose **Add new site → Import an existing project** and pick the repository. `netlify.toml` already sets the build command (`npm run build`), the publish directory (`dist`) and the functions directory (`netlify/functions`).
-3. Under **Site configuration → Environment variables**, add the keys for the engines you want (any subset). Mark them as secret.
+3. Under **Site configuration → Environment variables**, add `ACCESS_CODE` and the keys for the engines you want (any subset). Mark them as secret.
 4. Optionally add `PAGESPEED_API_KEY` for PageSpeed in the website audit.
 5. Deploy. The header shows which engines are live. With no keys, live checks are disabled and the demo report is offered instead.
 
 ## Safety guards
 
+- **Access code:** live runs and audits spend the owner's API credit, so both functions require `ACCESS_CODE` (constant-time comparison of SHA-256 digests). If it is not configured, they refuse every call. Ten wrong codes per IP per 15 minutes trigger a lockout. The code is kept in the owner's browser (localStorage) only.
+- **Monthly caps:** every engine call and audit is counted per calendar month (UTC) in Netlify Blobs before it runs, and refused once the cap is reached. If the counter is unavailable, calls are refused (fail closed). The store is not transactional, so simultaneous requests can overshoot by a few; caps sit below the real provider limits for that reason. For a hard stop, also set a daily quota on the API in Google Cloud Console.
 - API keys exist only in function environment variables; `/api/engines` returns engine names and models, never keys.
 - One prompt per request, at most 300 characters, at most 4 engines, at most 15 prompts per run (tracked per run ID and IP), JSON bodies up to 4 KB.
 - The website audit only fetches public http(s) URLs: no credentials, standard ports only, no local or private hostnames or IPs (decimal, hex, octal and IPv6 forms included), every DNS answer must be public, a connect-time lookup blocks DNS rebinding, every redirect (at most 5) is checked again, 8 s timeout for the page and 5 s for side files, 2 MB cap on the page and 64 KB on side files after decompression, and only HTML/text bodies are read. Errors are returned as fixed messages without internal details.

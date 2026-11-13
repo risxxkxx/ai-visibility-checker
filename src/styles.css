@@ -1797,3 +1797,23 @@ select:disabled {
     font-size: 9.5pt;
   }
 }
+
+/* Access code: live checks spend the owner's API credit, so they need a code. */
+.runbar__access {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 14rem;
+}
+.runbar__access label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.runbar__access input {
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line, #d0d0d0);
+  border-radius: 8px;
+  background: var(--paper, #fff);
+  color: inherit;
+}

@@ -15,7 +15,7 @@ import { DEFAULT_PROMPT_COUNT, generatePrompts, sanitizePromptList } from './lib
 import { EMPTY_FACTS_DRAFT, factsFromDraft, validateBusiness, type FactsDraft } from './lib/validation.ts';
 import { normalizeDomain } from './lib/normalize.ts';
 import { buildReport } from './lib/report.ts';
-import { auditSite, fetchEngines, runCheck } from './lib/client.ts';
+import { auditSite, fetchEngines, getAccessCode, runCheck, setAccessCode } from './lib/client.ts';
 import { BusinessForm } from './components/BusinessForm.tsx';
 import { FactsForm } from './components/FactsForm.tsx';
 import { PromptEditor } from './components/PromptEditor.tsx';
@@ -92,6 +92,8 @@ export function App() {
   const [count, setCount] = useState(DEFAULT_PROMPT_COUNT);
   const [customPrompts, setCustomPrompts] = useState<string[] | null>(null);
   const [engines, setEngines] = useState<EngineStatus[] | null>(null);
+  const [accessConfigured, setAccessConfigured] = useState(false);
+  const [accessCode, setAccessCodeState] = useState<string>(() => getAccessCode());
   const [selection, setSelection] = useState<Set<EngineId> | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [run, setRun] = useState<RunState | null>(null);
@@ -101,7 +103,9 @@ export function App() {
   useEffect(() => {
     const ctrl = new AbortController();
     fetchEngines(ctrl.signal).then((r) => {
-      if (!ctrl.signal.aborted) setEngines(r.engines);
+      if (ctrl.signal.aborted) return;
+      setEngines(r.engines);
+      setAccessConfigured(r.accessConfigured);
     });
     return () => ctrl.abort();
   }, []);
@@ -156,7 +160,7 @@ export function App() {
 
   const start = async () => {
     setShowErrors(true);
-    if (!formValid || cleanPrompts.length === 0 || selected.length === 0) return;
+    if (!formValid || cleanPrompts.length === 0 || selected.length === 0 || !accessCode.trim()) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     const domain = normalizeDomain(business.domain);
@@ -178,7 +182,7 @@ export function App() {
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     if (auditStatus === 'running') {
       // Runs alongside the engine calls; the report updates when it finishes.
-      auditSite(domain, ctrl.signal).then(
+      auditSite(domain, ctrl.signal, accessCode.trim()).then(
         (audit) => setRun((r) => (r && r.startedAt === snapshot.startedAt ? { ...r, audit, auditStatus: 'done' } : r)),
         (err: unknown) => {
           if (ctrl.signal.aborted) return;
@@ -192,6 +196,7 @@ export function App() {
         prompts: snapshot.prompts,
         engines: snapshot.engines.map((e) => e.id),
         signal: ctrl.signal,
+        accessCode: accessCode.trim(),
         onAnswers: (answers) => setRun((r) => (r ? { ...r, answers: [...r.answers, ...answers] } : r)),
       });
       setRun((r) => (r ? { ...r, status: ctrl.signal.aborted ? 'stopped' : 'done' } : r));
@@ -300,6 +305,28 @@ export function App() {
             </label>
           ))}
         </div>
+        {available.length > 0 && (
+          <div className="runbar__access">
+            <label htmlFor="access-code">Access code</label>
+            <input
+              id="access-code"
+              type="password"
+              autoComplete="current-password"
+              value={accessCode}
+              maxLength={200}
+              disabled={running}
+              placeholder="Required for live checks"
+              onChange={(e) => {
+                setAccessCodeState(e.target.value);
+                setAccessCode(e.target.value.trim());
+              }}
+            />
+            {!accessConfigured && (
+              <p className="runbar__error">Live checks are locked on this deployment: the owner must set ACCESS_CODE.</p>
+            )}
+            {accessConfigured && showErrors && !accessCode.trim() && <p className="runbar__error">Enter the access code.</p>}
+          </div>
+        )}
         <label className="engine-toggle runbar__audit" title={hasDomain ? '' : 'Enter a website first'}>
           <input
             type="checkbox"
