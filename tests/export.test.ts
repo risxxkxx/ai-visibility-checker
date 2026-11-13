@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildReport } from '../src/lib/report.ts';
-import { escapeHtml, reportFileName, reportToHtml, reportToJson } from '../src/lib/exportReport.ts';
+import { escapeHtml, reportFileName, reportToHtml, reportToJson, snippetHtml } from '../src/lib/exportReport.ts';
 import type { EngineAnswer } from '../src/lib/types.ts';
 import { business } from './fixtures.ts';
 
@@ -47,6 +47,30 @@ describe('report export', () => {
     const r = report(true);
     expect(reportToHtml(r)).toContain('Demo data.');
     expect(reportFileName(r, 'json')).toBe('ai-visibility-example-studio-2026-11-12-demo.json');
+  });
+
+  it('renders the report in Macedonian with a Macedonian file name', () => {
+    const r = report(true);
+    const html = reportToHtml(r, 'mk');
+    expect(html).toContain('<html lang="mk">');
+    expect(html).toContain('Извештај за видливост во AI');
+    expect(html).toContain('Што да поправите, по редослед');
+    expect(html).toContain('Демо податоци.');
+    expect(html).not.toContain('What to fix, in order');
+    expect(reportFileName(r, 'html', 'mk')).toBe('ai-visibility-example-studio-2026-11-12-demo-mk.html');
+    // Recommendation text switches language too.
+    expect(html).toContain(r.recommendations[0]!.title.mk);
+    expect(html).not.toContain(r.recommendations[0]!.title.en);
+  });
+
+  it('includes the facts and audit sections and escapes snippets', () => {
+    const html = reportToHtml(report());
+    expect(html).toContain('Facts AI states about you');
+    expect(html).toContain('Website readiness');
+    expect(html).toContain('The website audit was turned off for this run.');
+    expect(
+      snippetHtml({ text: '<b>Example</b> from €190', highlights: [{ start: 20, end: 24, kind: 'claim' }] }),
+    ).toBe('&lt;b&gt;Example&lt;/b&gt; from <mark class="claim">€190</mark>');
   });
 
   it('round-trips through JSON', () => {
