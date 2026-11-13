@@ -1,7 +1,7 @@
 import type { Config, Context } from '@netlify/functions';
-import { GuardError, normaliseTargetUrl, safeFetch, type SafeFetchOptions, type SafeFetchResult } from '../../server/audit/ssrf.mjs';
+import { normaliseTargetUrl, safeFetch } from '../../server/audit/ssrf.mjs';
 import { runPsi, type PsiResult } from '../../server/audit/psi.mjs';
-import { buildSiteAudit, type SideFetch } from '../../server/geo.ts';
+import { guardFailure, runSiteAudit, type AuditFailure, type FetchPage } from '../../server/siteAudit.ts';
 import { RateLimiter, sameOrigin } from '../../server/guard.ts';
 import { checkAccess, createFailedAccessLimiter } from '../../server/access.ts';
 import { blobsCounterStore, monthlyAuditLimit, reserve, type CounterStore } from '../../server/budget.ts';
@@ -9,26 +9,10 @@ import { normalizeDomain } from '../../src/lib/normalize.ts';
 import { LIMITS } from '../../src/lib/validation.ts';
 import type { SiteAudit } from '../../src/lib/types.ts';
 
+export type { FetchPage };
 export const AUDIT_MAX_BODY_BYTES = 1_024;
-const SIDE_FETCH = { timeoutMs: 5_000, maxBytes: 64 * 1024 } as const;
 const PSI_TIMEOUT_MS = 20_000;
 
-/** English messages for guard error codes. The ported guard's own messages are Macedonian. */
-const GUARD_ERRORS: Record<string, [status: number, message: string]> = {
-  invalid_url: [400, 'Enter a valid domain, for example examplestudio.mk.'],
-  url_too_long: [400, 'The domain is too long.'],
-  invalid_scheme: [400, 'Only http and https sites can be audited.'],
-  credentials: [400, 'The address must not contain a user name or password.'],
-  port: [400, 'Only standard ports (80/443) are allowed.'],
-  private_address: [400, 'The domain points to a private or local address, so it was not audited.'],
-  dns: [422, 'The domain could not be found (DNS).'],
-  invalid_redirect: [422, 'The site sent an invalid redirect.'],
-  too_many_redirects: [422, 'The site redirected too many times.'],
-  timeout: [504, 'The site did not respond in time.'],
-  network: [502, 'The site could not be loaded.'],
-};
-
-export type FetchPage = (url: string, options?: SafeFetchOptions) => Promise<SafeFetchResult>;
 export type PsiRunner = (url: string, options: { apiKey: string; timeoutMs: number }) => Promise<{ psi: PsiResult | null; reason: string | null }>;
 
 export interface AuditDeps {
@@ -43,38 +27,8 @@ export interface AuditDeps {
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   Response.json(body, { status, headers: { 'cache-control': 'no-store', ...headers } });
 
-function guardResponse(error: unknown): Response {
-  const code = error instanceof GuardError ? error.code : 'network';
-  const [status, message] = GUARD_ERRORS[code] ?? GUARD_ERRORS.network!;
-  return json(status, { error: message, code });
-}
-
-async function side(fetchPage: FetchPage, url: string): Promise<SideFetch | null> {
-  try {
-    const r = await fetchPage(url, { accept: 'text', ...SIDE_FETCH });
-    return { status: r.status, contentType: r.contentType, body: r.body };
-  } catch {
-    return null;
-  }
-}
-
-function robotsSitemap(robots: SideFetch | null): string | null {
-  if (!robots || robots.status !== 200 || !robots.body) return null;
-  const m = /^\s*sitemap\s*:\s*(https?:\/\/\S+)/im.exec(robots.body);
-  return m ? m[1]! : null;
-}
-
-async function httpRedirect(page: SafeFetchResult, fetchPage: FetchPage): Promise<boolean | null> {
-  const first = new URL(page.redirects[0] ?? page.finalUrl);
-  const final = new URL(page.finalUrl);
-  if (final.protocol !== 'https:') return null;
-  if (first.protocol === 'http:') return true;
-  try {
-    const r = await fetchPage(`http://${final.host}/`, { accept: 'none', ...SIDE_FETCH });
-    return new URL(r.finalUrl).protocol === 'https:';
-  } catch {
-    return null; // port 80 closed: nothing insecure is served
-  }
+function failureResponse(f: AuditFailure): Response {
+  return json(f.status, { error: f.error, code: f.code, ...(f.httpStatus !== undefined ? { status: f.httpStatus } : {}) });
 }
 
 /**
@@ -123,7 +77,7 @@ export function createAuditHandler(deps: AuditDeps = {}) {
     try {
       target = normaliseTargetUrl(`https://${domain}/`);
     } catch (error) {
-      return guardResponse(error);
+      return failureResponse(guardFailure(error));
     }
 
     const ip = context?.ip || req.headers.get('x-nf-client-connection-ip') || 'unknown';
@@ -149,53 +103,9 @@ export function createAuditHandler(deps: AuditDeps = {}) {
         ? psiRunner(target.href, { apiKey, timeoutMs: PSI_TIMEOUT_MS }).catch(() => ({ psi: null }))
         : Promise.resolve({ psi: null });
 
-    let page: SafeFetchResult;
-    try {
-      page = await fetchPage(target.href, { accept: 'html' });
-    } catch (error) {
-      const code = error instanceof GuardError ? error.code : 'network';
-      if (code !== 'network' && code !== 'timeout') return guardResponse(error);
-      // Some small-business sites still have no TLS; fall back to plain http once.
-      try {
-        page = await fetchPage(`http://${domain}/`, { accept: 'html' });
-      } catch (fallbackError) {
-        return guardResponse(fallbackError);
-      }
-    }
-
-    if (page.skipped === 'content-type' || page.body === null) {
-      return json(422, { error: 'The address does not return an HTML page.', code: 'not_html' });
-    }
-    if (page.status >= 400) {
-      const hint = page.status === 403 || page.status === 429 ? ' The site may block automated checks.' : '';
-      return json(422, { error: `The site returned HTTP ${page.status}.${hint}`, code: 'http_status', status: page.status });
-    }
-
-    const origin = new URL(page.finalUrl).origin;
-    const [redirect, llms, robots, psiResult] = await Promise.all([
-      httpRedirect(page, fetchPage),
-      side(fetchPage, `${origin}/llms.txt`),
-      side(fetchPage, `${origin}/robots.txt`),
-      psiPromise,
-    ]);
-    const declared = robotsSitemap(robots);
-    const sitemap = await side(fetchPage, declared?.startsWith(`${origin}/`) ? declared : `${origin}/sitemap.xml`);
-
-    const audit = buildSiteAudit({
-      domain,
-      html: page.body,
-      finalUrl: page.finalUrl,
-      bytes: page.bytes,
-      truncated: page.truncated,
-      httpRedirectsToHttps: redirect,
-      llms,
-      robots,
-      sitemap,
-      psi: psiResult.psi,
-      psiStatus: psiStatusFor(psiResult.psi),
-      now: now(),
-    });
-    return json(200, { audit });
+    const outcome = await runSiteAudit({ domain, target, fetchPage, psi: psiPromise, psiStatus: psiStatusFor, now: now() });
+    if (!outcome.ok) return failureResponse(outcome);
+    return json(200, { audit: outcome.audit });
   };
 }
 
