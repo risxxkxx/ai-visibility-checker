@@ -1,0 +1,36 @@
+{
+  "_fixtureNote": "HAND-WRITTEN FIXTURE, not a captured API response. It follows the documented PageSpeed Insights v5 runPagespeed response shape (lighthouseResult.categories[].score 0-1, lighthouseResult.audits[].numericValue/displayValue, loadingExperience.metrics[].percentile) and is trimmed to the fields the app reads.",
+  "kind": "pagespeedonline#result",
+  "id": "https://oldsite.example/",
+  "analysisUTCTimestamp": "2026-11-12T10:00:00.000Z",
+  "loadingExperience": {
+    "id": "https://oldsite.example/",
+    "metrics": {
+      "LARGEST_CONTENTFUL_PAINT_MS": {"percentile": 6100, "category": "SLOW"},
+      "INTERACTION_TO_NEXT_PAINT": {"percentile": 340, "category": "AVERAGE"}
+    },
+    "overall_category": "SLOW",
+    "initial_url": "https://oldsite.example/"
+  },
+  "lighthouseResult": {
+    "requestedUrl": "https://oldsite.example/",
+    "finalUrl": "https://oldsite.example/",
+    "lighthouseVersion": "12.8.0",
+    "fetchTime": "2026-11-12T10:00:00.000Z",
+    "configSettings": {"formFactor": "mobile", "onlyCategories": ["performance", "seo", "accessibility", "best-practices"]},
+    "runtimeError": {"code": "NO_ERROR", "message": ""},
+    "categories": {
+      "performance": {"id": "performance", "title": "Performance", "score": 0.34},
+      "seo": {"id": "seo", "title": "SEO", "score": 0.72},
+      "accessibility": {"id": "accessibility", "title": "Accessibility", "score": 0.65},
+      "best-practices": {"id": "best-practices", "title": "Best Practices", "score": 0.78}
+    },
+    "audits": {
+      "first-contentful-paint": {"id": "first-contentful-paint", "score": 0.3, "numericValue": 3400.2, "numericUnit": "millisecond", "displayValue": "3.4 s"},
+      "largest-contentful-paint": {"id": "largest-contentful-paint", "score": 0.02, "numericValue": 7912.5, "numericUnit": "millisecond", "displayValue": "7.9 s"},
+      "cumulative-layout-shift": {"id": "cumulative-layout-shift", "score": 0.6, "numericValue": 0.184, "numericUnit": "unitless", "displayValue": "0.184"},
+      "total-blocking-time": {"id": "total-blocking-time", "score": 0.2, "numericValue": 860, "numericUnit": "millisecond", "displayValue": "860 ms"},
+      "speed-index": {"id": "speed-index", "score": 0.4, "numericValue": 5600, "numericUnit": "millisecond", "displayValue": "5.6 s"}
+    }
+  }
+}
