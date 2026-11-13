@@ -10,6 +10,8 @@ export interface ProviderRequest {
 export interface ParsedAnswer {
   text: string;
   citations: string[];
+  /** Why the answer is empty, when the provider says (blocked prompt, token limit). */
+  note?: string;
 }
 
 type Json = Record<string, unknown>;
@@ -116,6 +118,74 @@ export function parsePerplexity(data: unknown): ParsedAnswer {
   return { text, citations: unique(citations) };
 }
 
+// ---------- Google Gemini (generateContent) ----------
+
+export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+export function geminiRequest(engine: EngineConfig, prompt: string, cfg: ServerConfig): ProviderRequest {
+  const generationConfig: Json = {
+    // Thinking tokens count toward maxOutputTokens, so leave headroom for them.
+    maxOutputTokens: cfg.geminiThinkingLevel ? cfg.maxOutputTokens + 1500 : cfg.maxOutputTokens,
+  };
+  if (cfg.geminiThinkingLevel) generationConfig.thinkingConfig = { thinkingLevel: cfg.geminiThinkingLevel };
+  const body: Json = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig,
+  };
+  if (cfg.geminiGrounding) body.tools = [{ google_search: {} }];
+  return {
+    url: `${GEMINI_API_BASE}/models/${encodeURIComponent(engine.model)}:generateContent`,
+    headers: { 'x-goog-api-key': engine.apiKey, 'content-type': 'application/json' },
+    body,
+  };
+}
+
+const DOMAIN_TITLE_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+
+/**
+ * Grounding chunk URIs are Google redirect links (vertexaisearch.cloud.google.com/grounding-api-redirect/...)
+ * and the chunk title is the source domain. Redirect links expire and all share one host, so they are
+ * reduced to https://<domain>/ for source counting. Direct links are kept as they are.
+ */
+export function geminiCitation(uri: string, title: string): string {
+  let host = '';
+  try {
+    host = new URL(uri).hostname;
+  } catch {
+    // not a URL
+  }
+  const isRedirect = host === '' || host === 'vertexaisearch.cloud.google.com';
+  if (isRedirect) return DOMAIN_TITLE_RE.test(title.trim()) ? `https://${title.trim().toLowerCase()}/` : '';
+  return uri;
+}
+
+export function parseGemini(data: unknown): ParsedAnswer {
+  if (!isObj(data)) return { text: '', citations: [] };
+  const candidate = arr(data.candidates)[0];
+  const cand = isObj(candidate) ? candidate : {};
+  const content = isObj(cand.content) ? cand.content : {};
+  const text = arr(content.parts)
+    .filter((p) => isObj(p) && p.thought !== true)
+    .map((p) => str((p as Json).text))
+    .join('')
+    .trim();
+  const grounding = isObj(cand.groundingMetadata) ? cand.groundingMetadata : {};
+  const citations = arr(grounding.groundingChunks).map((c) => {
+    const web = isObj(c) && isObj(c.web) ? c.web : {};
+    return geminiCitation(str(web.uri), str(web.title));
+  });
+  let note: string | undefined;
+  if (!text) {
+    const feedback = isObj(data.promptFeedback) ? data.promptFeedback : {};
+    const blocked = str(feedback.blockReason);
+    const finish = str(cand.finishReason);
+    if (blocked) note = `Blocked by Gemini (${blocked})`;
+    else if (finish === 'MAX_TOKENS') note = 'Stopped at the token limit before answering (raise MAX_OUTPUT_TOKENS or lower GEMINI_THINKING_LEVEL)';
+    else if (finish && finish !== 'STOP') note = `Stopped by Gemini (${finish})`;
+  }
+  return { text, citations: unique(citations), ...(note ? { note } : {}) };
+}
+
 // ---------- shared ----------
 
 const PROVIDERS: Record<
@@ -125,6 +195,7 @@ const PROVIDERS: Record<
   anthropic: { request: anthropicRequest, parse: parseAnthropic },
   openai: { request: openaiRequest, parse: parseOpenAI },
   perplexity: { request: perplexityRequest, parse: parsePerplexity },
+  gemini: { request: geminiRequest, parse: parseGemini },
 };
 
 /** Pulls a readable message out of a provider error body without echoing anything secret. */
@@ -136,7 +207,10 @@ export function providerErrorMessage(status: number, body: unknown): string {
   } else if (typeof body === 'string') {
     detail = body;
   }
-  detail = detail.replace(/(sk|pplx|key)[-_][A-Za-z0-9_-]{8,}/g, '[redacted]').slice(0, 200);
+  detail = detail
+    .replace(/(sk|pplx|key)[-_][A-Za-z0-9_-]{8,}/g, '[redacted]')
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[redacted]')
+    .slice(0, 200);
   return `HTTP ${status}${detail ? `: ${detail}` : ''}`;
 }
 
@@ -172,7 +246,14 @@ export async function callEngine(
     }
     const parsed = provider.parse(data);
     if (!parsed.text) {
-      return { ...base, ok: false, text: '', citations: parsed.citations, error: 'Empty answer', latencyMs: Date.now() - started };
+      return {
+        ...base,
+        ok: false,
+        text: '',
+        citations: parsed.citations,
+        error: parsed.note ?? 'Empty answer',
+        latencyMs: Date.now() - started,
+      };
     }
     return { ...base, ok: true, text: parsed.text, citations: parsed.citations, latencyMs: Date.now() - started };
   } catch (err) {

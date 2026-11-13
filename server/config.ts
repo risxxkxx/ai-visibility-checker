@@ -6,6 +6,7 @@ export const DEFAULT_MODELS: Record<EngineId, string> = {
   anthropic: 'claude-sonnet-5-5',
   openai: 'gpt-6-luna',
   perplexity: 'sonar',
+  gemini: 'gemini-3.8-flash',
 };
 
 export interface EngineConfig {
@@ -21,6 +22,10 @@ export interface ServerConfig {
   openaiReasoningEffort: string;
   openaiWebSearch: boolean;
   perplexityUrl: string;
+  /** Adds the google_search tool (Grounding with Google Search), closer to the consumer Gemini app. */
+  geminiGrounding: boolean;
+  /** Sent as generationConfig.thinkingConfig.thinkingLevel; empty omits it. */
+  geminiThinkingLevel: string;
   rateLimitRequests: number;
   rateLimitWindowMs: number;
 }
@@ -37,6 +42,7 @@ const KEY_VARS: Record<EngineId, [key: string, model: string]> = {
   anthropic: ['ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL'],
   openai: ['OPENAI_API_KEY', 'OPENAI_MODEL'],
   perplexity: ['PERPLEXITY_API_KEY', 'PERPLEXITY_MODEL'],
+  gemini: ['GEMINI_API_KEY', 'GEMINI_MODEL'],
 };
 
 export function loadConfig(env: Env = process.env): ServerConfig {
@@ -44,7 +50,8 @@ export function loadConfig(env: Env = process.env): ServerConfig {
   for (const id of ENGINE_IDS) {
     const [keyVar, modelVar] = KEY_VARS[id];
     const apiKey = env[keyVar]?.trim();
-    if (apiKey) engines[id] = { id, apiKey, model: env[modelVar]?.trim() || DEFAULT_MODELS[id] };
+    const model = (env[modelVar]?.trim() || DEFAULT_MODELS[id]).replace(/^models\//, '');
+    if (apiKey) engines[id] = { id, apiKey, model };
   }
   return {
     engines,
@@ -53,6 +60,8 @@ export function loadConfig(env: Env = process.env): ServerConfig {
     openaiReasoningEffort: (env.OPENAI_REASONING_EFFORT ?? 'low').trim(),
     openaiWebSearch: env.OPENAI_WEB_SEARCH?.trim().toLowerCase() === 'true',
     perplexityUrl: env.PERPLEXITY_API_URL?.trim() || 'https://api.perplexity.ai/v1/sonar',
+    geminiGrounding: env.GEMINI_GROUNDING?.trim().toLowerCase() === 'true',
+    geminiThinkingLevel: (env.GEMINI_THINKING_LEVEL ?? 'low').trim().toLowerCase(),
     rateLimitRequests: int(env.RATE_LIMIT_REQUESTS, 45, 1, 1_000),
     rateLimitWindowMs: int(env.RATE_LIMIT_WINDOW_MS, 15 * 60_000, 10_000, 24 * 60 * 60_000),
   };

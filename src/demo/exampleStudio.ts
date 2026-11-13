@@ -25,9 +25,12 @@ const MODELS: Record<EngineId, string> = {
   anthropic: 'demo (written by hand)',
   openai: 'demo (written by hand)',
   perplexity: 'demo (written by hand)',
+  gemini: 'demo (written by hand)',
 };
 
-const ENGINES: EngineStatus[] = (['anthropic', 'openai', 'perplexity'] as const).map((id) => ({
+const DEMO_ENGINE_IDS = ['openai', 'gemini', 'anthropic', 'perplexity'] as const;
+
+const ENGINES: EngineStatus[] = DEMO_ENGINE_IDS.map((id) => ({
   id,
   label: ENGINE_LABELS[id],
   available: true,
@@ -104,7 +107,7 @@ Compare what's included in maintenance and hosting, since that's where quotes di
 
 1. **Northpine Web** – Known for e-commerce and custom web apps.
 2. **Studio Lumen** – Strong visual design and branding.
-3. **Example Studio** – Websites plus SEO and content for local businesses.
+3. **Example Studio Digital Agency** – Websites plus SEO and content for local businesses.
 4. **Kamenko Digital** – Good value for small company sites.
 
 Tip: shortlist two or three and ask for a fixed quote and timeline.`,
@@ -119,7 +122,9 @@ Tip: shortlist two or three and ask for a fixed quote and timeline.`,
 Check their portfolios to see whether their style matches what you want.`,
     },
     {
-      text: `For a small business in Skopje, Example Studio (Егзампл Студио) is worth a look: they focus on local companies and usually bundle the website with basic SEO and Google Business Profile setup. Kamenko Digital is another budget-friendly option. Whoever you pick, make sure you own the domain and have access to the site's admin.`,
+      text: `For a small business in Skopje, Example Studio (Егзампл Студио) is worth a look: they focus on local companies and usually bundle the website with basic SEO and Google Business Profile setup. Their one-page websites start from €190, and you can reach them on 02 555 0100.
+
+Kamenko Digital is another budget-friendly option. Whoever you pick, make sure you own the domain and have access to the site's admin.`,
     },
     {
       text: `Top 5 web design agency options in Skopje:
@@ -161,6 +166,78 @@ Be careful with very cheap offers that don't include maintenance or hosting.`,
 3. **Example Studio** – positive feedback from small and mid-sized local businesses.
 
 Always verify recent reviews before you decide.`,
+    },
+  ],
+  gemini: [
+    {
+      text: `Skopje has a growing web design scene. These agencies are recommended most often:
+
+**1. Northpine Web**
+* **Focus:** E-commerce and custom web applications.
+* **Best for:** Larger companies with complex projects.
+
+**2. Example Studio**
+* **Focus:** Websites, local SEO and social media for small businesses.
+* **Pricing:** Social media management typically costs around €300–400 per month.
+
+**3. Studio Lumen**
+* **Focus:** Branding-led design and visual identity.
+
+Prices in Skopje vary widely, so ask each agency for a written quote.`,
+    },
+    {
+      text: `Here are some well-regarded web design agencies in Skopje, North Macedonia:
+
+* **Northpine Web:** A full-service agency with a large e-commerce portfolio.
+* **Studio Lumen:** Known for strong visual design and branding work.
+* **Kamenko Digital:** Affordable packages for startups and small businesses.
+
+Check their recent work and Google reviews before deciding.`,
+    },
+    {
+      text: `For a small business, a smaller agency that offers fixed packages is usually the best value.
+
+**Example Studio** is a good fit: they focus on local businesses, and a one-page website starts at around €190.
+
+**Kamenko Digital** is another option, with starter packages from €250.
+
+Make sure the quote includes hosting and basic SEO.`,
+    },
+    {
+      text: `Top 5 web design agencies in Skopje:
+
+1. **Northpine Web** – e-commerce and custom builds.
+2. **Studio Lumen** – branding and design.
+3. **Example Studio** – websites and local SEO for small businesses.
+4. **Kamenko Digital** – budget-friendly sites.
+5. **Vardar Web Lab** – WordPress development.`,
+    },
+    {
+      text: `Based on online reviews, two agencies stand out in Skopje:
+
+* **Northpine Web** has the largest number of reviews on international directories.
+* **Example Studio** has very positive Google reviews from local small businesses.
+
+Read the most recent reviews, as ratings change over time.`,
+    },
+    {
+      text: `Good alternatives to Northpine Web in Skopje:
+
+1. **Studio Lumen** – similar quality with a stronger focus on design.
+2. **Example Studio** – a good choice for small and medium-sized local businesses.
+
+Ask both for examples of projects similar to yours.`,
+    },
+    {
+      text: `If budget matters most, consider:
+
+* **Kamenko Digital** – fixed-price websites from €250.
+* **Example Studio** – one-page websites from about 12.000 денари (around €195).
+
+Cheaper offers often leave out content writing and maintenance, so compare what is included.`,
+    },
+    {
+      text: `Northpine Web and Studio Lumen have the strongest reputation among established companies in Skopje, while Example Studio is often mentioned by small businesses for clear communication and on-time delivery.`,
     },
   ],
   perplexity: [
@@ -242,7 +319,7 @@ Compare what's included, since cheaper quotes often leave out content and SEO [3
 };
 
 export const DEMO_ANSWERS: EngineAnswer[] = DEMO_PROMPTS.flatMap((prompt, i) =>
-  (['anthropic', 'openai', 'perplexity'] as const).map((engine) => {
+  DEMO_ENGINE_IDS.map((engine) => {
     const d = DRAFTS[engine][i]!;
     return {
       engine,

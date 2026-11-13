@@ -2,14 +2,15 @@
 
 export type Language = 'en' | 'mk';
 
-export type EngineId = 'anthropic' | 'openai' | 'perplexity';
+export type EngineId = 'anthropic' | 'openai' | 'perplexity' | 'gemini';
 
-export const ENGINE_IDS: readonly EngineId[] = ['anthropic', 'openai', 'perplexity'];
+export const ENGINE_IDS: readonly EngineId[] = ['anthropic', 'openai', 'perplexity', 'gemini'];
 
 export const ENGINE_LABELS: Record<EngineId, string> = {
   anthropic: 'Claude',
   openai: 'ChatGPT',
   perplexity: 'Perplexity',
+  gemini: 'Gemini',
 };
 
 export interface BusinessInput {
@@ -41,7 +42,10 @@ export interface EngineAnswer {
   prompt: string;
   ok: boolean;
   text: string;
-  /** URLs the engine cited as sources (Perplexity citations, OpenAI url_citation annotations). */
+  /**
+   * URLs the engine cited as sources (Perplexity citations, OpenAI url_citation annotations,
+   * Gemini grounding chunks; Gemini's redirect links are reduced to the source domain).
+   */
   citations: string[];
   error?: string;
   latencyMs: number;

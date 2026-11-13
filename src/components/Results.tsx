@@ -272,7 +272,7 @@ export function SourcesPanel({ report }: { report: VisibilityReport }) {
         <h2 className="panel-title" id="sources-title">
           Sources the engines cited
         </h2>
-        <p className="muted">No sources were cited. Perplexity (and ChatGPT with web search on) list the pages they used.</p>
+        <p className="muted">No sources were cited. Perplexity, Gemini with grounding and ChatGPT with web search list the pages they used.</p>
       </section>
     );
   }

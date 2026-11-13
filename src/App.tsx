@@ -190,7 +190,7 @@ export function App() {
           . Does it name <mark className="hero__brand">{business.name.trim() || 'you'}</mark>?
         </h1>
         <p className="hero__lede">
-          This tool asks Claude, ChatGPT and Perplexity the questions your customers ask, checks every answer for your
+          This tool asks ChatGPT, Gemini, Claude and Perplexity the questions your customers ask, checks every answer for your
           name, rank and competitors, and turns that into a score and a short list of fixes.
         </p>
       </section>
@@ -277,7 +277,7 @@ export function App() {
             <strong>Demo data</strong>
             <p>
               Example Studio and its competitors are fictional. These answers were written by hand to show how the report
-              works. They did not come from Claude, ChatGPT or Perplexity.
+              works. They did not come from ChatGPT, Gemini, Claude or Perplexity.
             </p>
           </div>
           <button type="button" className="button button--light" onClick={() => setDemo(null)}>

@@ -17,6 +17,7 @@ beforeAll(async () => {
   process.env.OPENAI_API_KEY = 'sk-test-openai';
   process.env.PERPLEXITY_API_KEY = 'pplx-test';
   process.env.ANTHROPIC_API_KEY = '';
+  process.env.GEMINI_API_KEY = 'AIza-test-gemini-key-000000000000';
   process.env.RATE_LIMIT_REQUESTS = '3';
   ask = (await import('../netlify/functions/ask.ts')).default as Handler;
   engines = (await import('../netlify/functions/engines.ts')).default as () => Promise<Response>;
@@ -29,11 +30,13 @@ describe('GET /api/engines', () => {
     const res = await engines();
     const text = await res.text();
     expect(text).not.toContain('sk-test-openai');
+    expect(text).not.toContain('AIza-test-gemini');
     const data = JSON.parse(text) as { engines: { id: string; available: boolean }[] };
     expect(data.engines.map((e) => [e.id, e.available])).toEqual([
       ['anthropic', false],
       ['openai', true],
       ['perplexity', true],
+      ['gemini', true],
     ]);
   });
 });
@@ -55,6 +58,19 @@ describe('POST /api/ask', () => {
     expect(answers).toHaveLength(2);
     expect(answers[0]).toMatchObject({ engine: 'openai', ok: true });
     expect(answers[1]).toMatchObject({ engine: 'perplexity', ok: false, error: 'HTTP 503: upstream down' });
+  });
+
+  it('asks Gemini with the key in a header, never in the URL', async () => {
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      expect(url).not.toContain('AIza');
+      expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('AIza-test-gemini-key-000000000000');
+      return Response.json({ candidates: [{ content: { parts: [{ text: '1. Example Studio' }] }, finishReason: 'STOP' }] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await ask(post({ prompt: 'best agency in Skopje', engines: ['gemini'], runId: 'run-gggggggg' }), ctx('5.5.5.5'));
+    const { answers } = (await res.json()) as { answers: { engine: string; ok: boolean; text: string }[] };
+    expect(answers).toEqual([expect.objectContaining({ engine: 'gemini', ok: true, text: '1. Example Studio' })]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects invalid bodies, wrong methods and cross-origin calls', async () => {

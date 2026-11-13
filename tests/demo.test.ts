@@ -13,7 +13,8 @@ describe('demo report', () => {
 
   it('covers every prompt for every engine', () => {
     expect(DEMO_PROMPTS).toHaveLength(8);
-    expect(DEMO_ANSWERS).toHaveLength(24);
+    expect(DEMO_ANSWERS).toHaveLength(32);
+    expect(new Set(DEMO_ANSWERS.map((a) => a.engine))).toEqual(new Set(['openai', 'gemini', 'anthropic', 'perplexity']));
   });
 
   it('only uses reserved .example domains for the fictional businesses', () => {
@@ -30,9 +31,9 @@ describe('demo report', () => {
     expect(report.analyses.some((a) => a.matchType === 'fuzzy')).toBe(true);
     expect(report.analyses.some((a) => a.ok && a.mentioned && a.position === null)).toBe(true);
     expect(report.analyses.filter((a) => !a.ok)).toHaveLength(1);
-    expect(report.score.answered).toBe(23);
-    expect(report.score.mentionedCount).toBe(13);
-    expect(report.score.score).toBe(61);
+    expect(report.score.answered).toBe(31);
+    expect(report.score.mentionedCount).toBe(20);
+    expect(report.score.score).toBe(67);
     expect(report.score.band).toBe('visible');
     expect(report.shareOfVoice[0]!.name).toBe('Northpine Web');
     expect(report.recommendations[0]!.priority).toBe('high');

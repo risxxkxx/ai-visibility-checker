@@ -3,7 +3,10 @@ import { DEFAULT_MODELS, engineStatuses, loadConfig } from '../server/config.ts'
 import { RateLimiter, sameOrigin, validateAskBody } from '../server/guard.ts';
 import {
   callEngine,
+  geminiCitation,
+  geminiRequest,
   openaiRequest,
+  parseGemini,
   parseAnthropic,
   parseOpenAI,
   parsePerplexity,
@@ -36,6 +39,10 @@ describe('loadConfig', () => {
 describe('validateAskBody', () => {
   const ok = { prompt: 'best web design agency in Skopje', engines: ['openai'], runId: 'run-12345678' };
 
+  it('accepts all four engines', () => {
+    expect(validateAskBody({ ...ok, engines: ['anthropic', 'openai', 'perplexity', 'gemini'] }).ok).toBe(true);
+  });
+
   it('accepts a valid body and normalises whitespace', () => {
     const r = validateAskBody({ ...ok, prompt: '  best   agency  ' });
     expect(r).toEqual({ ok: true, value: { prompt: 'best agency', engines: ['openai'], runId: 'run-12345678' } });
@@ -46,8 +53,9 @@ describe('validateAskBody', () => {
     expect(validateAskBody({ ...ok, prompt: 'x'.repeat(301) }).ok).toBe(false);
     expect(validateAskBody({ ...ok, prompt: 'hi' }).ok).toBe(false);
     expect(validateAskBody({ ...ok, engines: [] }).ok).toBe(false);
-    expect(validateAskBody({ ...ok, engines: ['openai', 'gemini'] }).ok).toBe(false);
+    expect(validateAskBody({ ...ok, engines: ['openai', 'copilot'] }).ok).toBe(false);
     expect(validateAskBody({ ...ok, engines: ['a', 'b', 'c', 'd'] }).ok).toBe(false);
+    expect(validateAskBody({ ...ok, engines: ['openai', 'gemini', 'anthropic', 'perplexity', 'x'] }).ok).toBe(false);
     expect(validateAskBody({ ...ok, runId: 'x' }).ok).toBe(false);
   });
 });
@@ -124,6 +132,83 @@ describe('response parsers', () => {
     expect(providerErrorMessage(401, { error: { message: 'Invalid key sk-abcdefghijklmnop' } })).toBe(
       'HTTP 401: Invalid key [redacted]',
     );
+  });
+});
+
+describe('Gemini', () => {
+  it('reads GEMINI_* settings, strips a models/ prefix and defaults to no grounding', () => {
+    const cfg = loadConfig({ GEMINI_API_KEY: 'g', GEMINI_MODEL: 'models/gemini-x' });
+    expect(cfg.engines.gemini!.model).toBe('gemini-x');
+    expect(cfg.geminiGrounding).toBe(false);
+    expect(cfg.geminiThinkingLevel).toBe('low');
+    expect(loadConfig({ GEMINI_API_KEY: 'g' }).engines.gemini!.model).toBe(DEFAULT_MODELS.gemini);
+  });
+
+  it('builds a generateContent request with thinking headroom and optional grounding', () => {
+    const cfg = loadConfig({ GEMINI_API_KEY: 'gk', GEMINI_GROUNDING: 'true' });
+    const req = geminiRequest(cfg.engines.gemini!, 'best agency?', cfg);
+    expect(req.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
+    expect(req.headers['x-goog-api-key']).toBe('gk');
+    expect(req.url).not.toContain('gk');
+    expect(req.body).toEqual({
+      contents: [{ role: 'user', parts: [{ text: 'best agency?' }] }],
+      generationConfig: { maxOutputTokens: 2400, thinkingConfig: { thinkingLevel: 'low' } },
+      tools: [{ google_search: {} }],
+    });
+    const plain = loadConfig({ GEMINI_API_KEY: 'gk', GEMINI_THINKING_LEVEL: '' });
+    const body = geminiRequest(plain.engines.gemini!, 'q', plain).body as Record<string, unknown>;
+    expect(body.tools).toBeUndefined();
+    expect(body.generationConfig).toEqual({ maxOutputTokens: 900 });
+  });
+
+  it('parses text parts, skips thoughts and turns grounding chunks into source domains', () => {
+    const data = {
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [{ text: 'thinking...', thought: true }, { text: '1. **NULA** – web from €190.' }, { text: '\n2. Other' }],
+          },
+          finishReason: 'STOP',
+          groundingMetadata: {
+            webSearchQueries: ['web design agency Skopje'],
+            groundingChunks: [
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC', title: 'agencynula.com' } },
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/DeF', title: 'Clutch.co' } },
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/GhI', title: 'Not a domain' } },
+              { web: { uri: 'https://www.goodfirms.co/list', title: 'GoodFirms' } },
+              { retrievedContext: { uri: 'x' } },
+            ],
+          },
+        },
+      ],
+    };
+    expect(parseGemini(data)).toEqual({
+      text: '1. **NULA** – web from €190.\n2. Other',
+      citations: ['https://agencynula.com/', 'https://clutch.co/', 'https://www.goodfirms.co/list'],
+    });
+  });
+
+  it('explains empty answers', () => {
+    expect(parseGemini({ promptFeedback: { blockReason: 'SAFETY' } })).toMatchObject({ text: '', note: 'Blocked by Gemini (SAFETY)' });
+    expect(parseGemini({ candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] }).note).toContain('token limit');
+    expect(parseGemini({ candidates: [{ finishReason: 'RECITATION' }] }).note).toBe('Stopped by Gemini (RECITATION)');
+    expect(parseGemini(null)).toEqual({ text: '', citations: [] });
+  });
+
+  it('keeps direct links and drops unusable redirects', () => {
+    expect(geminiCitation('https://example.mk/page', 'example.mk')).toBe('https://example.mk/page');
+    expect(geminiCitation('', 'example.mk')).toBe('https://example.mk/');
+    expect(geminiCitation('https://vertexaisearch.cloud.google.com/x', '')).toBe('');
+  });
+
+  it('redacts Google API keys from errors and reports block reasons as failures', async () => {
+    expect(providerErrorMessage(400, { error: { code: 400, message: 'API key not valid: AIzaSyA1234567890abcdefghijklmnop', status: 'INVALID_ARGUMENT' } })).toBe(
+      'HTTP 400: API key not valid: [redacted]',
+    );
+    const cfg = loadConfig({ GEMINI_API_KEY: 'gk' });
+    const a = await callEngine(cfg.engines.gemini!, 'q', cfg, async () => Response.json({ promptFeedback: { blockReason: 'OTHER' } }));
+    expect(a).toMatchObject({ engine: 'gemini', ok: false, error: 'Blocked by Gemini (OTHER)' });
   });
 });
 
