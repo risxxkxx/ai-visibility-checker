@@ -60,7 +60,7 @@ export function loadConfig(env: Env = process.env): ServerConfig {
   }
   return {
     engines,
-    timeoutMs: int(env.ENGINE_TIMEOUT_MS, 20_000, 2_000, 28_000),
+    timeoutMs: int(env.ENGINE_TIMEOUT_MS, 25_000, 2_000, 28_000),
     maxOutputTokens: int(env.MAX_OUTPUT_TOKENS, 900, 200, 4_000),
     openaiReasoningEffort: (env.OPENAI_REASONING_EFFORT ?? 'low').trim(),
     openaiWebSearch: env.OPENAI_WEB_SEARCH?.trim().toLowerCase() === 'true',

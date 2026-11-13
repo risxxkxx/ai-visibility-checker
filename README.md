@@ -248,7 +248,7 @@ All variables are read by the Netlify Functions only. None is sent to the browse
 | `GEMINI_FALLBACK_MODEL` | `gemini-3.7-flash` | Tried when the main Gemini model answers 429/5xx (e.g. "high demand"), after one retry of the main model. Empty disables it. The answer shows which model replied |
 | `GEMINI_THINKING_LEVEL` | `low` | Sent as `generationConfig.thinkingConfig.thinkingLevel`; set it empty to omit it |
 | `PAGESPEED_API_KEY` | | Optional. Adds Google PageSpeed Insights (mobile) to the website audit. The GEO checks run without it |
-| `ENGINE_TIMEOUT_MS` | `20000` | Timeout per engine call (2,000 to 28,000; Netlify stops synchronous functions at 30 s) |
+| `ENGINE_TIMEOUT_MS` | `25000` | Total time per engine call, retries and Gemini fallback included (2,000 to 28,000; Netlify stops synchronous functions at 30 s). With a fallback, the main Gemini model gets about 55% of it |
 | `MAX_OUTPUT_TOKENS` | `900` | Output cap per answer |
 | `RATE_LIMIT_REQUESTS` | `45` | Requests per IP per window (one request is one prompt) |
 | `RATE_LIMIT_WINDOW_MS` | `900000` | Rate-limit window (15 minutes) |

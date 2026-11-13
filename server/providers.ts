@@ -219,7 +219,7 @@ export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 /** Upstream statuses worth one more try: rate limits and temporary overload ("high demand"). */
 export const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-type Attempt = { answer: EngineAnswer; retryable: boolean };
+type Attempt = { answer: EngineAnswer; retryable: boolean; timedOut: boolean };
 
 async function attemptOnce(
   engine: EngineConfig,
@@ -250,6 +250,7 @@ async function attemptOnce(
       return {
         answer: { ...base, ok: false, text: '', citations: [], error: providerErrorMessage(res.status, data), latencyMs: Date.now() - started },
         retryable: RETRYABLE_STATUSES.has(res.status),
+        timedOut: false,
       };
     }
     const parsed = provider.parse(data);
@@ -257,14 +258,19 @@ async function attemptOnce(
       return {
         answer: { ...base, ok: false, text: '', citations: parsed.citations, error: parsed.note ?? 'Empty answer', latencyMs: Date.now() - started },
         retryable: false,
+        timedOut: false,
       };
     }
-    return { answer: { ...base, ok: true, text: parsed.text, citations: parsed.citations, latencyMs: Date.now() - started }, retryable: false };
+    return {
+      answer: { ...base, ok: true, text: parsed.text, citations: parsed.citations, latencyMs: Date.now() - started },
+      retryable: false,
+      timedOut: false,
+    };
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
     const timedOut = name === 'TimeoutError' || name === 'AbortError';
-    const error = timedOut ? `Timed out after ${Math.round(cfg.timeoutMs / 1000)}s` : 'Network error';
-    return { answer: { ...base, ok: false, text: '', citations: [], error, latencyMs: Date.now() - started }, retryable: !timedOut };
+    const error = timedOut ? `Timed out after ${Math.round(timeoutMs / 1000)}s` : 'Network error';
+    return { answer: { ...base, ok: false, text: '', citations: [], error, latencyMs: Date.now() - started }, retryable: !timedOut, timedOut };
   }
 }
 
@@ -288,26 +294,38 @@ export async function callEngine(
 ): Promise<EngineAnswer> {
   const started = Date.now();
   const deadline = started + cfg.timeoutMs;
-  const fallback = engine.id === 'gemini' ? cfg.geminiFallbackModel : '';
+  const fallback = engine.id === 'gemini' && cfg.geminiFallbackModel !== engine.model ? cfg.geminiFallbackModel : '';
+  // With a fallback available, the main model gets ~55% of the budget so a slow ("high demand") model
+  // still leaves time for the fallback instead of using up the whole timeout.
+  const mainBudget = fallback ? Math.round(cfg.timeoutMs * 0.55) : cfg.timeoutMs;
   const plan: { model: string; backoffMs: number }[] = [
     { model: engine.model, backoffMs: 0 },
     { model: engine.model, backoffMs: 1_200 },
-    ...(fallback && fallback !== engine.model ? [{ model: fallback, backoffMs: 300 }] : []),
+    ...(fallback ? [{ model: fallback, backoffMs: 300 }] : []),
   ];
 
   let first: EngineAnswer | null = null;
+  let skipMain = false;
   for (const [i, step] of plan.entries()) {
+    const isMain = step.model === engine.model;
+    if (isMain && skipMain) continue;
     if (i > 0) {
       if (deadline - Date.now() - step.backoffMs < MIN_ATTEMPT_MS) break;
       await sleep(step.backoffMs);
     }
-    const remaining = Math.max(1_000, deadline - Date.now());
-    const { answer, retryable } = await attemptOnce({ ...engine, model: step.model }, prompt, cfg, fetchImpl, remaining);
+    const remaining = deadline - Date.now();
+    const budget = Math.max(1_000, isMain ? Math.min(remaining, started + mainBudget - Date.now()) : remaining);
+    const { answer, retryable, timedOut } = await attemptOnce({ ...engine, model: step.model }, prompt, cfg, fetchImpl, budget);
     if (answer.ok) return { ...answer, latencyMs: Date.now() - started };
     first ??= answer;
+    // A timeout means the model is too slow right now: don't retry it, go to the fallback.
+    if (timedOut && isMain) {
+      skipMain = true;
+      continue;
+    }
     if (!retryable) {
       // A non-temporary error from the fallback shouldn't hide the original reason.
-      return step.model === engine.model ? { ...answer, latencyMs: Date.now() - started } : { ...first, latencyMs: Date.now() - started };
+      return isMain ? { ...answer, latencyMs: Date.now() - started } : { ...first, latencyMs: Date.now() - started };
     }
   }
   return { ...first!, latencyMs: Date.now() - started };

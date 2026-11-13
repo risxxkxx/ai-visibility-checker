@@ -41,6 +41,18 @@ describe('callEngine retries and Gemini fallback', () => {
     expect(a).toMatchObject({ ok: false, model: 'gemini-3.8-flash', error: expect.stringMatching(/^HTTP 503: .*high demand/) });
   });
 
+  it('goes straight to the fallback when the main model times out', async () => {
+    const calls: string[] = [];
+    const fetchImpl: FetchLike = vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url.includes('gemini-3.8-flash')) throw Object.assign(new Error('slow'), { name: 'TimeoutError' });
+      return geminiOk('NULA');
+    });
+    const a = await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
+    expect(a).toMatchObject({ ok: true, model: 'gemini-3.7-flash' });
+    expect(calls.map((u) => (u.includes('3.8') ? '3.8' : '3.7'))).toEqual(['3.8', '3.7']);
+  });
+
   it('does not retry client errors like 400', async () => {
     const fetchImpl: FetchLike = vi.fn(async () => Response.json({ error: { message: 'bad request' } }, { status: 400 }));
     await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
