@@ -277,6 +277,64 @@ Default model IDs were checked against the providers' documentation in November 
 - Cross-origin browser requests are rejected. Provider error messages are shortened and scrubbed of anything that looks like a key (including Google `AIza...` keys).
 - Everything rendered from an answer is treated as text; the HTML export escapes every value.
 
+## Public mini test
+
+A free, smaller version of the check for visitors of [agencynula.com](https://agencynula.com/ai-vidlivost/) (the page lives in the NULA website, not in this app). It has its own endpoints and protections; the internal tool above is unchanged and still needs `ACCESS_CODE`.
+
+| Endpoint | What it does |
+| --- | --- |
+| `POST /api/public/check` | `{ name, domain, category, city, lang: "mk" \| "en", turnstileToken }`. Verifies Turnstile, checks the limits, sends **5 prompts to Gemini only** (the cheapest engine) while the website audit runs, analyses everything on the server with the same code as the internal tool (analysis, score, readiness, recommendations, in the chosen language), saves the run in Supabase and returns a **summary**: check id, visibility score and band text, readiness score, how many of the 5 answers named the business, the businesses AI named most, and the top 3 fixes (title and one-line why) |
+| `POST /api/public/lead` | `{ checkId, email, name?, phone?, consent: true, lang? }`. Saves the lead with the exact consent text and returns the **full report** for that check: every recommendation (title, why, steps, priority, status), the per-question results (prompt, named yes/no, position, other businesses named), the readiness checks, and schema.org / llms.txt drafts |
+
+Both answer `OPTIONS` preflights. Code: [`netlify/functions/public-check.ts`](netlify/functions/public-check.ts), [`public-lead.ts`](netlify/functions/public-lead.ts), [`server/public/`](server/public), [`src/lib/publicReport.ts`](src/lib/publicReport.ts).
+
+The public test has no competitor field. The businesses "AI named" are read from the names in the answers' lists (bold text, link text, or text before " – "), without the business itself and without headings like "Tips"; they are then used as the competitor list for share of voice and the per-question table. It is a heuristic, so the page calls them "businesses AI named", not verified competitors.
+
+### Environment variables (public mode)
+
+Set these in the checker's Netlify site, next to `GEMINI_API_KEY`. Mark the keys and the salt as secret.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PUBLIC_ALLOWED_ORIGINS` | `https://agencynula.com,https://www.agencynula.com` | Comma-separated origins allowed by CORS. Turnstile's reported hostname must also be one of these hosts. Add `http://localhost:8888` only for local testing |
+| `TURNSTILE_SECRET_KEY` | | **Required.** Cloudflare Turnstile secret for the widget on the site (action `ai-check`). Missing: 503 |
+| `SUPABASE_URL` | | **Required.** `https://<project>.supabase.co` (this project: `https://fbxpnxxasszincqghozo.supabase.co`) |
+| `SUPABASE_SECRET_KEY` | | **Required.** A secret key (`sb_secret_...`) or the legacy `service_role` JWT. Sent as `apikey`; a JWT (`eyJ...`) also goes in `Authorization: Bearer` |
+| `IP_HASH_SALT` | | **Required**, at least 16 random characters. IPs are stored only as SHA-256(IP + salt) |
+| `PUBLIC_MONTHLY_CHECKS` | `150` | Fresh public checks per calendar month (UTC), all visitors together |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `MONTHLY_LIMIT_GEMINI` | see above | Shared with the internal tool |
+
+If any required setting is missing, `/api/public/check` answers 503 (`not_configured`) and calls nothing. `/api/public/lead` needs the Supabase settings and the salt.
+
+### Limits
+
+All counters use the atomic Supabase function `public.try_increment_usage(p_key text, p_limit int) returns boolean` (count and compare in one statement, so parallel requests cannot overshoot). If the counter cannot be reached, the request is refused with 503 (fail closed).
+
+| Limit | Counter key | Default |
+| --- | --- | --- |
+| Checks per IP per day (UTC) | `pub:ip:<ipHash>:<YYYY-MM-DD>` | 3 |
+| Public checks per month | `pub:checks:<YYYY-MM>` | `PUBLIC_MONTHLY_CHECKS` (150) |
+| Gemini requests per month, one per prompt | `engine:gemini:<YYYY-MM>` | `MONTHLY_LIMIT_GEMINI` (4,500); when only some of the 5 fit, only those prompts run |
+| Leads per IP per day | `pub:lead:<ipHash>:<YYYY-MM-DD>` | 10 |
+
+The Gemini counter uses the same limit as the internal tool, but the internal tool counts in Netlify Blobs and the public test in Supabase, so each side can use up to `MONTHLY_LIMIT_GEMINI`. Keep a daily quota on the Gemini API in Google Cloud Console as the hard stop.
+
+**Cache.** If `public_checks` has a run for the same domain **and language** from the last 7 days in which Gemini answered, its saved summary (with its check id) is returned with no engine calls and no monthly counters. Re-running your own domain from the same IP is free; a different visitor asking for a cached domain uses one of their 3 daily checks, so cached results can't be read in bulk. Runs where Gemini did not answer are never served from the cache.
+
+**Time.** Netlify stops synchronous functions at 30 s. Gemini calls (with their retry and fallback) and the website audit run side by side within at most 18 s (less if Turnstile or Supabase were slow), PageSpeed is skipped, and the whole request is planned to end within 25 s.
+
+**When Gemini doesn't answer.** The summary has `status: "no-answer"` and `visibility.score: null` (never a real-looking 0), with the website readiness result and fixes from the failed website checks. The row is saved with `visibility_score = null` and `answered = 0`.
+
+**When saving fails.** The visitor still gets the summary, with `checkId: null`; the page then hides the e-mail unlock and shows the contact options.
+
+### Privacy
+
+- Raw IP addresses are never stored or logged: only SHA-256(IP + `IP_HASH_SALT`) is kept, in `public_checks.ip_hash` and in the counter keys.
+- `public_checks` keeps the business name, domain, category, city, scores, summary and the full report (including Gemini's answers) for NULA's follow-up. `leads` keeps e-mail, optional name and phone, the check id, `consent = true` and `consent_text`: the exact checkbox text with a version and language, from [`server/public/consent.ts`](server/public/consent.ts). The text must stay identical to the checkbox on the website; bump `CONSENT_VERSION` when it changes.
+- Both tables have row-level security on and no policies, so only the server (secret key) can read or write them. The secret key, the Turnstile secret and the salt never leave the functions and are never part of a response or an error message.
+- The browser only ever receives the summary, and the full report after consent.
+- Turnstile's test keys (site key `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA`) report the hostname `example.com`, so they only pass if that host is allowed; use them with a staging `PUBLIC_ALLOWED_ORIGINS`, not in production.
+
 ## Demo mode
 
 When no engine has a key, the app offers **Open demo report**. It loads a bundled example for **Example Studio, Skopje**, a fictional business, with fictional competitors (Northpine Web, Studio Lumen, Kamenko Digital, Vardar Web Lab) on reserved `.example` domains. The 32 answers (8 prompts × ChatGPT, Gemini, Claude, Perplexity) were written by hand to exercise the analysers: lists, a table, Gemini-style bold headings with bullets, a prose mention, a typo match, a Cyrillic alias, one failed call, a longer name variant ("Example Studio Digital Agency"), a correct €190 price and phone, a denar price, and a Gemini social-media price of €300–400 per month against a known €150/month. The known facts and the website audit are invented too, and no website is fetched. None of it came from an AI engine. The UI, the HTML export (both languages) and the export file name all carry a "demo data" label. The demo runs through the same analysis code as a live run.
@@ -287,14 +345,17 @@ When no engine has a key, the app offers **Open demo report**. It loads a bundle
 src/
   lib/            prompts, normalisation, mention and list analysis, scoring, fact check
                   (facts.ts), site readiness (readiness.ts), recommendations, report text
-                  (i18n.ts), report building and export (pure, tested)
+                  (i18n.ts), report building and export, public summary (publicReport.ts) (pure, tested)
   components/     React UI
   demo/           bundled, clearly labelled demo data
 server/           provider requests and parsing, config, validation, rate limiting
   geo.ts          GEO checks on fetched HTML, robots.txt and llms.txt (pure, tested)
   audit/          SSRF-guarded fetch, HTML analysis and PageSpeed, ported from nula-lead-finder
                   as plain .mjs with .d.mts types
-netlify/functions engines.ts (GET /api/engines), ask.ts (POST /api/ask), audit.ts (POST /api/audit)
+  siteAudit.ts    website audit internals shared by /api/audit and the public check
+  public/         public mini test: CORS, Turnstile, Supabase (PostgREST), limits, validation, consent text
+netlify/functions engines.ts (GET /api/engines), ask.ts (POST /api/ask), audit.ts (POST /api/audit),
+                  public-check.ts (POST /api/public/check), public-lead.ts (POST /api/public/lead)
 tests/            Vitest suites (.ts, plus the ported .mjs audit suites)
 ```
 
