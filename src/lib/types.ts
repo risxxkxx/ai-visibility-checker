@@ -125,6 +125,89 @@ export interface Recommendation {
   steps: string[];
 }
 
+// ---------- Website audit (GEO readiness) ----------
+
+/** Result of a side check that can fail for reasons unrelated to the site (timeouts, blocks). */
+export type CheckState = 'present' | 'missing' | 'unknown';
+
+export interface BrandNameSource {
+  source: 'title' | 'og:site_name' | 'application-name' | 'schema' | 'schema:alternateName';
+  value: string;
+}
+
+export interface SchemaSummary {
+  /** A schema.org Organization / LocalBusiness (or subtype) node was found in JSON-LD. */
+  present: boolean;
+  types: string[];
+  invalidBlocks: number;
+  name: string | null;
+  alternateNames: string[];
+  telephone: string | null;
+  address: string | null;
+  priceRange: string | null;
+  /** makesOffer, offers or hasOfferCatalog present on the business node. */
+  hasOffers: boolean;
+  sameAs: string[];
+}
+
+export interface LanguageSignals {
+  htmlLang: string;
+  hreflang: string[];
+  /** Share of letters in the visible text that are Cyrillic, 0-1. */
+  cyrillicShare: number;
+  hasMk: boolean;
+  hasEn: boolean;
+  /** Links that look like a language switcher (text "EN", "МК", or /en/ paths). */
+  switcherLinks: string[];
+}
+
+export interface ServiceLink {
+  url: string;
+  text: string;
+}
+
+export interface PsiSummary {
+  performance: number | null;
+  seo: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+  lcpMs: number | null;
+  cls: number | null;
+  tbtMs: number | null;
+}
+
+export interface SiteAudit {
+  version: 1;
+  domain: string;
+  finalUrl: string;
+  checkedAt: string;
+  https: boolean;
+  /** null when it could not be checked (http port closed, or the site is http-only). */
+  httpRedirectsToHttps: boolean | null;
+  /** A viewport meta with width=device-width. */
+  viewport: boolean;
+  title: string | null;
+  metaDescription: string | null;
+  telLinks: number;
+  brandNames: BrandNameSource[];
+  schema: SchemaSummary;
+  llmsTxt: { state: CheckState; status: number | null; bytes: number };
+  robots: { state: CheckState; blockedAiBots: string[] };
+  sitemap: CheckState;
+  languages: LanguageSignals;
+  services: {
+    /** Same-site links that look like service or pricing pages. */
+    pages: ServiceLink[];
+    /** In-page anchors (#services) that look like services: sections, not separate pages. */
+    sectionAnchors: number;
+    pricingPage: string | null;
+  };
+  /** Phone numbers from tel: links and schema telephone, as written. */
+  phonesOnSite: string[];
+  psi: PsiSummary | null;
+  psiStatus: 'ok' | 'not-configured' | 'failed' | 'skipped';
+}
+
 export interface VisibilityReport {
   version: 1;
   generatedAt: string;
