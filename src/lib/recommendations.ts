@@ -20,7 +20,7 @@ import type {
 } from './types.ts';
 import { ENGINE_LABELS } from './types.ts';
 import { foldText, hostMatchesDomain, hostOf, normalizeDomain } from './normalize.ts';
-import { describeWrongClaim, formatPriceFact, samePhone } from './facts.ts';
+import { describeWrongClaim, formatPriceFact, labelMatches, samePhone } from './facts.ts';
 import { inconsistentSiteNames, missingSchemaFields, officialName, SCHEMA_FIELD_LABELS } from './readiness.ts';
 
 const L = (en: string, mk: string): Localized => ({ en, mk });
@@ -89,21 +89,10 @@ export function sourcesWithoutYou(analyses: AnswerAnalysis[], ownDomain: string)
     .slice(0, 6);
 }
 
-const LABEL_STEMS = (label: string) =>
-  foldText(label)
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 4)
-    .map((w) => w.slice(0, 5));
-
-/** Does a known price item have a matching service page (by words in its URL or link text)? */
+/** Does a known price item have a matching service page (by words in its URL or link text, EN or MK)? */
 function pageFor(label: string, audit: SiteAudit | null): string | null {
-  if (!audit) return null;
-  const stems = LABEL_STEMS(label);
-  if (stems.length === 0) return null;
-  const hit = audit.services.pages.find((p) => {
-    const hay = foldText(`${pathOf(p.url)} ${p.text}`);
-    return stems.some((s) => hay.includes(s));
-  });
+  if (!audit || !label.trim()) return null;
+  const hit = audit.services.pages.find((p) => p.url !== audit.services.pricingPage && labelMatches(label, `${pathOf(p.url).replace(/[-_/]+/g, ' ')} ${p.text}`));
   return hit?.url ?? null;
 }
 

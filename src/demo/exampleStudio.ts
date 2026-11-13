@@ -1,9 +1,11 @@
 /**
  * DEMO DATA. Everything in this file is fictional and was written by hand to show how the
  * report works. "Example Studio", "Northpine Web", "Studio Lumen", "Kamenko Digital" and
- * "Vardar Web Lab" are made-up businesses. None of these answers came from an AI engine.
+ * "Vardar Web Lab" are made-up businesses. None of these answers came from an AI engine,
+ * the known facts are invented, and the website audit below was written by hand (no site
+ * was fetched; examplestudio.example is a reserved domain).
  */
-import type { BusinessInput, EngineAnswer, EngineId, EngineStatus, VisibilityReport } from '../lib/types.ts';
+import type { BusinessInput, EngineAnswer, EngineId, EngineStatus, KnownFacts, SiteAudit, VisibilityReport } from '../lib/types.ts';
 import { ENGINE_LABELS } from '../lib/types.ts';
 import { generatePrompts } from '../lib/prompts.ts';
 import { buildReport } from '../lib/report.ts';
@@ -20,6 +22,67 @@ export const DEMO_BUSINESS: BusinessInput = {
 };
 
 export const DEMO_PROMPTS = generatePrompts(DEMO_BUSINESS, 8);
+
+/** What the fictional owner entered under "Known facts". */
+export const DEMO_FACTS: KnownFacts = {
+  officialName: 'Example Studio',
+  nameVariants: ['Егзампл Студио'],
+  phones: ['02 555 0100'],
+  prices: [
+    { label: 'One-page website', amount: 190, currency: 'EUR', perMonth: false },
+    { label: 'Online store', amount: 590, currency: 'EUR', perMonth: false },
+    { label: 'Social media management', amount: 150, currency: 'EUR', perMonth: true },
+  ],
+  city: 'Skopje',
+  address: '',
+};
+
+/** A hand-written audit result in the shape /api/audit returns, with typical gaps to fix. */
+export const DEMO_AUDIT: SiteAudit = {
+  version: 1,
+  domain: 'examplestudio.example',
+  finalUrl: 'https://examplestudio.example/',
+  checkedAt: '2026-11-01T09:00:00.000Z',
+  https: true,
+  httpRedirectsToHttps: true,
+  viewport: true,
+  title: 'Example Studio | Веб дизајн и брендирање, Скопје',
+  metaDescription: 'Изработка на веб-страници, онлајн продавници и социјални мрежи за мали бизниси во Скопје.',
+  telLinks: 1,
+  brandNames: [
+    { source: 'title', value: 'Example Studio | Веб дизајн и брендирање, Скопје' },
+    { source: 'og:site_name', value: 'Example Studio' },
+    { source: 'schema', value: 'Example Studio' },
+  ],
+  schema: {
+    present: true,
+    types: ['ProfessionalService', 'PostalAddress', 'WebSite'],
+    invalidBlocks: 0,
+    name: 'Example Studio',
+    alternateNames: [],
+    telephone: '+389 2 555 0100',
+    address: 'Skopje, MK',
+    priceRange: null,
+    hasOffers: false,
+    sameAs: [],
+  },
+  llmsTxt: { state: 'missing', status: 404, bytes: 0 },
+  robots: { state: 'present', blockedAiBots: [] },
+  sitemap: 'present',
+  languages: { htmlLang: 'mk', hreflang: [], cyrillicShare: 0.86, hasMk: true, hasEn: false, switcherLinks: [] },
+  services: {
+    pages: [
+      { url: 'https://examplestudio.example/uslugi/web-stranici', text: 'Веб-страници' },
+      { url: 'https://examplestudio.example/uslugi/onlajn-prodavnici', text: 'Онлајн продавници' },
+      { url: 'https://examplestudio.example/ceni', text: 'Цени' },
+    ],
+    sectionAnchors: 1,
+    pricingPage: 'https://examplestudio.example/ceni',
+  },
+  phonesOnSite: ['+38925550100', '+389 2 555 0100'],
+  psi: { performance: 62, seo: 92, accessibility: 88, bestPractices: 96, lcpMs: 4600, cls: 0.04, tbtMs: 180 },
+  psiStatus: 'ok',
+};
 
 const MODELS: Record<EngineId, string> = {
   anthropic: 'demo (written by hand)',
@@ -343,5 +406,7 @@ export function buildDemoReport(): VisibilityReport {
     answers: DEMO_ANSWERS,
     demo: true,
     generatedAt: '2026-11-01T09:00:00.000Z',
+    facts: DEMO_FACTS,
+    audit: DEMO_AUDIT,
   });
 }

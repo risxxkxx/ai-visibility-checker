@@ -217,8 +217,8 @@ describe('checkFacts with the manual-test answers', () => {
     expect(r.claims).toHaveLength(1);
     expect(r.claims[0]).toMatchObject({ kind: 'price', status: 'possibly-wrong', factKey: 'price:1' });
     const sentence = describeWrongClaim(r.claims[0]!, FACTS, 'Gemini');
-    expect(sentence.en).toBe('Gemini stated €300-400/month; your price for Social media management is from €150/month.');
-    expect(sentence.mk).toBe('Gemini наведе €300-400/month; вашата цена за Social media management е од €150 месечно.');
+    expect(sentence.en).toBe('Gemini stated "€300-400/month"; your price for Social media management is from €150/month.');
+    expect(sentence.mk).toBe('Gemini наведе „€300-400/month“; вашата цена за Social media management е од €150 месечно.');
   });
 
   it('combines engines into accuracy and per-fact rows', () => {

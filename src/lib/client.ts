@@ -1,4 +1,4 @@
-import type { EngineAnswer, EngineId, EngineStatus } from './types.ts';
+import type { EngineAnswer, EngineId, EngineStatus, SiteAudit } from './types.ts';
 import { ENGINE_IDS, ENGINE_LABELS } from './types.ts';
 
 const OFFLINE: EngineStatus[] = ENGINE_IDS.map((id) => ({ id, label: ENGINE_LABELS[id], available: false, model: null }));
@@ -77,4 +77,20 @@ export async function runCheck({ prompts, engines, concurrency = 3, signal, onAn
 
   await Promise.all(Array.from({ length: Math.min(concurrency, prompts.length) }, worker));
   if (fatal) throw fatal;
+}
+
+/** Runs the website audit for a domain. Throws an Error with a readable message on failure. */
+export async function auditSite(domain: string, signal?: AbortSignal): Promise<SiteAudit> {
+  const res = await fetch('/api/audit', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ domain }),
+    signal,
+  });
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('The audit function is not running here (use netlify dev or a Netlify deploy).');
+  }
+  const data = (await res.json().catch(() => ({}))) as { audit?: SiteAudit; error?: string };
+  if (!res.ok || !data.audit) throw new Error(data.error ?? `The audit failed (HTTP ${res.status}).`);
+  return data.audit;
 }

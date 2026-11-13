@@ -396,7 +396,8 @@ function labelConcepts(text: string): Set<number> {
   return out;
 }
 
-function labelMatches(label: string, context: string): boolean {
+/** Does a price label ("Social media management") fit a piece of text, across English and Macedonian? */
+export function labelMatches(label: string, context: string): boolean {
   const ctx = foldText(context);
   const concepts = labelConcepts(label);
   const ctxConcepts = labelConcepts(context);
@@ -748,27 +749,27 @@ export function describeWrongClaim(claim: FactClaim, facts: KnownFacts, engineLa
   if (claim.kind === 'price' && fact) {
     const f = formatPriceFact(fact);
     return {
-      en: `${engineLabel} stated ${claim.value}; your price${fact.label ? ` for ${fact.label}` : ''} is ${f.en}.`,
-      mk: `${engineLabel} наведе ${claim.value}; вашата цена${fact.label ? ` за ${fact.label}` : ''} е ${f.mk}.`,
+      en: `${engineLabel} stated "${claim.value}"; your price${fact.label ? ` for ${fact.label}` : ''} is ${f.en}.`,
+      mk: `${engineLabel} наведе „${claim.value}“; вашата цена${fact.label ? ` за ${fact.label}` : ''} е ${f.mk}.`,
     };
   }
   if (claim.kind === 'price') {
     return {
-      en: `${engineLabel} stated ${claim.value}, which matches none of your listed prices.`,
-      mk: `${engineLabel} наведе ${claim.value}, а таква цена ја нема во вашиот ценовник.`,
+      en: `${engineLabel} stated "${claim.value}", which matches none of your listed prices.`,
+      mk: `${engineLabel} наведе „${claim.value}“, а таква цена ја нема во вашиот ценовник.`,
     };
   }
   if (claim.kind === 'phone') {
     const known = facts.phones.join(', ');
     return {
-      en: `${engineLabel} gave the phone number ${claim.value}; yours is ${known}.`,
-      mk: `${engineLabel} го наведе бројот ${claim.value}; вашиот е ${known}.`,
+      en: `${engineLabel} gave the phone number "${claim.value}"; yours is ${known}.`,
+      mk: `${engineLabel} го наведе бројот „${claim.value}“; вашиот е ${known}.`,
     };
   }
   if (claim.kind === 'city') {
     return {
-      en: `${engineLabel} placed you in ${claim.value}; you are in ${facts.city}.`,
-      mk: `${engineLabel} ве смести во ${claim.value}; вие сте во ${facts.city}.`,
+      en: `${engineLabel} placed you in "${claim.value}"; you are in ${facts.city}.`,
+      mk: `${engineLabel} ве смести во „${claim.value}“; вие сте во ${facts.city}.`,
     };
   }
   return {

@@ -261,12 +261,12 @@ describe('buildRecommendations: facts and names from the answers', () => {
     const recs = byId(fromAnswers([chatgpt, gemini], siteAudit()));
     const fix = recs['fix-wrong-facts']!;
     expect(fix).toMatchObject({ status: 'todo', priority: 'high' });
-    expect(whyEn(fix)).toBe('Gemini stated €300–400 per month; your price for Social media management is from €150/month.');
-    expect(fix.why[0]!.mk).toBe('Gemini наведе €300–400 per month; вашата цена за Social media management е од €150 месечно.');
+    expect(whyEn(fix)).toBe('Gemini stated "€300–400 per month"; your price for Social media management is from €150/month.');
+    expect(fix.why[0]!.mk).toBe('Gemini наведе „€300–400 per month“; вашата цена за Social media management е од €150 месечно.');
     expect(stepsEn(fix)).toContain('https://examplestudio.example/ceni');
     expect(stepsEn(fix)).toContain('Google Business Profile');
     expect(recs['google-business-profile']!.priority).toBe('high');
-    expect(whyEn(recs['google-business-profile'])).toContain('Gemini stated €300–400 per month');
+    expect(whyEn(recs['google-business-profile'])).toContain('Gemini stated "€300–400 per month"');
     expect(stepsEn(recs['google-business-profile'])).toContain('One Page website from €190; Social media management from €150/month');
   });
 

@@ -1,15 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BusinessInput, EngineAnswer, EngineId, EngineStatus, VisibilityReport } from './lib/types.ts';
+import type {
+  AuditStatus,
+  BusinessInput,
+  EngineAnswer,
+  EngineId,
+  EngineStatus,
+  KnownFacts,
+  ReportLanguage,
+  SiteAudit,
+  VisibilityReport,
+} from './lib/types.ts';
 import { ENGINE_LABELS } from './lib/types.ts';
 import { DEFAULT_PROMPT_COUNT, generatePrompts, sanitizePromptList } from './lib/prompts.ts';
-import { validateBusiness } from './lib/validation.ts';
+import { EMPTY_FACTS_DRAFT, factsFromDraft, validateBusiness, type FactsDraft } from './lib/validation.ts';
+import { normalizeDomain } from './lib/normalize.ts';
 import { buildReport } from './lib/report.ts';
-import { fetchEngines, runCheck } from './lib/client.ts';
+import { auditSite, fetchEngines, runCheck } from './lib/client.ts';
 import { BusinessForm } from './components/BusinessForm.tsx';
+import { FactsForm } from './components/FactsForm.tsx';
 import { PromptEditor } from './components/PromptEditor.tsx';
 import { ExportBar } from './components/ExportBar.tsx';
 import { buildDemoReport } from './demo/exampleStudio.ts';
 import {
+  AuditPanel,
+  FactsPanel,
   PrintTranscripts,
   Recommendations,
   ResultsMatrix,
@@ -30,29 +44,50 @@ const EMPTY_BUSINESS: BusinessInput = {
 };
 
 const STORAGE_KEY = 'avc:business';
+const FACTS_KEY = 'avc:facts';
+const PREFS_KEY = 'avc:prefs';
 
-function loadBusiness(): BusinessInput {
+function load<T extends object>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...EMPTY_BUSINESS, ...(JSON.parse(raw) as Partial<BusinessInput>) };
+    const raw = localStorage.getItem(key);
+    if (raw) return { ...fallback, ...(JSON.parse(raw) as Partial<T>) };
   } catch {
     // ignore unreadable storage
   }
-  return EMPTY_BUSINESS;
+  return fallback;
+}
+
+function save(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage can be unavailable (private mode); the app still works
+  }
+}
+
+interface Prefs {
+  audit: boolean;
+  lang: ReportLanguage;
 }
 
 interface RunState {
   status: 'idle' | 'running' | 'done' | 'stopped' | 'error';
   business: BusinessInput;
+  facts: KnownFacts;
   prompts: string[];
   engines: EngineStatus[];
   answers: EngineAnswer[];
   startedAt: string;
+  audit: SiteAudit | null;
+  auditStatus: AuditStatus;
+  auditError: string | null;
   error?: string;
 }
 
 export function App() {
-  const [business, setBusiness] = useState<BusinessInput>(loadBusiness);
+  const [business, setBusiness] = useState<BusinessInput>(() => load(STORAGE_KEY, EMPTY_BUSINESS));
+  const [factsDraft, setFactsDraft] = useState<FactsDraft>(() => load(FACTS_KEY, EMPTY_FACTS_DRAFT));
+  const [prefs, setPrefs] = useState<Prefs>(() => load<Prefs>(PREFS_KEY, { audit: true, lang: 'en' }));
   const [demo, setDemo] = useState<VisibilityReport | null>(null);
   const [count, setCount] = useState(DEFAULT_PROMPT_COUNT);
   const [customPrompts, setCustomPrompts] = useState<string[] | null>(null);
@@ -71,13 +106,9 @@ export function App() {
     return () => ctrl.abort();
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(business));
-    } catch {
-      // storage can be unavailable (private mode); the app still works
-    }
-  }, [business]);
+  useEffect(() => save(STORAGE_KEY, business), [business]);
+  useEffect(() => save(FACTS_KEY, factsDraft), [factsDraft]);
+  useEffect(() => save(PREFS_KEY, prefs), [prefs]);
 
   // Expand every collapsible section when printing so the PDF contains all details.
   useEffect(() => {
@@ -97,6 +128,8 @@ export function App() {
   const selected = available.filter((e) => (selection ? selection.has(e.id) : true));
   const running = run?.status === 'running';
   const requestCount = cleanPrompts.length * selected.length;
+  const hasDomain = normalizeDomain(business.domain) !== '';
+  const lang = prefs.lang;
 
   const report: VisibilityReport | null = useMemo(() => {
     if (!run || run.answers.length === 0) return null;
@@ -107,6 +140,10 @@ export function App() {
       answers: run.answers,
       demo: false,
       generatedAt: run.startedAt,
+      facts: run.facts,
+      audit: run.audit,
+      auditStatus: run.auditStatus,
+      auditError: run.auditError,
     });
   }, [run]);
 
@@ -122,17 +159,34 @@ export function App() {
     if (!formValid || cleanPrompts.length === 0 || selected.length === 0) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    const domain = normalizeDomain(business.domain);
+    const auditStatus: AuditStatus = !prefs.audit ? 'off' : domain ? 'running' : 'no-domain';
     const snapshot: RunState = {
       status: 'running',
       business: { ...business, name: business.name.trim(), category: business.category.trim(), city: business.city.trim() },
+      facts: factsFromDraft(factsDraft),
       prompts: cleanPrompts,
       engines: selected,
       answers: [],
       startedAt: new Date().toISOString(),
+      audit: null,
+      auditStatus,
+      auditError: null,
     };
     setDemo(null);
     setRun(snapshot);
     requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    if (auditStatus === 'running') {
+      // Runs alongside the engine calls; the report updates when it finishes.
+      auditSite(domain, ctrl.signal).then(
+        (audit) => setRun((r) => (r && r.startedAt === snapshot.startedAt ? { ...r, audit, auditStatus: 'done' } : r)),
+        (err: unknown) => {
+          if (ctrl.signal.aborted) return;
+          const message = err instanceof Error ? err.message : 'The audit failed.';
+          setRun((r) => (r && r.startedAt === snapshot.startedAt ? { ...r, auditStatus: 'failed', auditError: message } : r));
+        },
+      );
+    }
     try {
       await runCheck({
         prompts: snapshot.prompts,
@@ -191,18 +245,28 @@ export function App() {
         </h1>
         <p className="hero__lede">
           This tool asks ChatGPT, Gemini, Claude and Perplexity the questions your customers ask, checks every answer for your
-          name, rank and competitors, and turns that into a score and a short list of fixes.
+          name, rank, competitors and the facts it states about you, audits your website for what assistants can read, and
+          turns that into a score and a short list of fixes.
         </p>
       </section>
 
       <div className="setup">
-        <BusinessForm
-          value={business}
-          errors={errors}
-          showErrors={showErrors}
-          disabled={running}
-          onChange={setBusiness}
-        />
+        <div className="setup__left">
+          <BusinessForm
+            value={business}
+            errors={errors}
+            showErrors={showErrors}
+            disabled={running}
+            onChange={setBusiness}
+          />
+          <FactsForm
+            value={factsDraft}
+            placeholderName={business.name.trim()}
+            placeholderCity={business.city.trim()}
+            disabled={running}
+            onChange={setFactsDraft}
+          />
+        </div>
         <PromptEditor
           prompts={prompts}
           edited={customPrompts !== null}
@@ -236,6 +300,16 @@ export function App() {
             </label>
           ))}
         </div>
+        <label className="engine-toggle runbar__audit" title={hasDomain ? '' : 'Enter a website first'}>
+          <input
+            type="checkbox"
+            checked={prefs.audit && hasDomain}
+            disabled={running || !hasDomain}
+            onChange={(e) => setPrefs((p) => ({ ...p, audit: e.target.checked }))}
+          />
+          <span>Audit the website</span>
+          <span className="engine-toggle__model">{hasDomain ? 'schema, llms.txt, robots.txt, languages, services' : 'needs a website'}</span>
+        </label>
         <div className="runbar__action">
           {showErrors && !formValid && <p className="runbar__error">Fill in the highlighted fields first.</p>}
           {!running && !demo && (
@@ -263,7 +337,8 @@ export function App() {
           )}
           {available.length > 0 && (
             <p className="runbar__meta">
-              {cleanPrompts.length} prompts × {selected.length} engines = {requestCount} API calls, billed to your keys.
+              {cleanPrompts.length} prompts × {selected.length} engines = {requestCount} API calls, billed to your keys
+              {prefs.audit && hasDomain ? ', plus one website audit' : ''}.
             </p>
           )}
         </div>
@@ -276,8 +351,9 @@ export function App() {
           <div>
             <strong>Demo data</strong>
             <p>
-              Example Studio and its competitors are fictional. These answers were written by hand to show how the report
-              works. They did not come from ChatGPT, Gemini, Claude or Perplexity.
+              Example Studio and its competitors are fictional. The answers, the known facts and the website audit were
+              written by hand to show how the report works. They did not come from ChatGPT, Gemini, Claude or Perplexity,
+              and no website was fetched.
             </p>
           </div>
           <button type="button" className="button button--light" onClick={() => setDemo(null)}>
@@ -304,23 +380,50 @@ export function App() {
       {view && (
         <main className={`results${view.demo ? ' results--demo' : ''}`} key={view.generatedAt} aria-label={view.demo ? 'Demo results' : 'Results'}>
           <div className="results__head">
-            <h2 className="results__summary">
-              {view.demo && <span className="demo-tag">Demo data</span>}
-              <mark className="hero__brand">{view.business.name}</mark> was named in {view.score.mentionedCount} of{' '}
-              {view.score.answered} answers.
+            <h2 className="results__summary" lang={lang}>
+              {view.demo && <span className="demo-tag">{lang === 'mk' ? 'Демо податоци' : 'Demo data'}</span>}
+              <mark className="hero__brand">{view.business.name}</mark> {lang === 'mk' ? 'беше спомнат во' : 'was named in'}{' '}
+              {view.score.mentionedCount} {lang === 'mk' ? 'од' : 'of'} {view.score.answered} {lang === 'mk' ? 'одговори' : 'answers'}.
             </h2>
-            <ExportBar report={view} disabled={running && !view.demo} />
+            <div className="results__tools">
+              <div className="segmented segmented--small" role="radiogroup" aria-label="Report language">
+                {(
+                  [
+                    ['en', 'English'],
+                    ['mk', 'Македонски'],
+                  ] as [ReportLanguage, string][]
+                ).map(([code, label]) => (
+                  <label key={code} className={`segmented__option${lang === code ? ' is-on' : ''}`}>
+                    <input
+                      type="radio"
+                      name="report-language"
+                      value={code}
+                      checked={lang === code}
+                      onChange={() => setPrefs((p) => ({ ...p, lang: code }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <ExportBar report={view} disabled={running && !view.demo} lang={lang} />
+            </div>
           </div>
-          <div className="results__top">
-            <ScorePanel report={view} running={running && !view.demo} />
-            <ResultsMatrix report={view} running={running && !view.demo} />
+          <div className="results__body" lang={lang}>
+            <div className="results__top">
+              <ScorePanel report={view} running={running && !view.demo} lang={lang} />
+              <ResultsMatrix report={view} running={running && !view.demo} lang={lang} />
+            </div>
+            {(!running || view.demo) && <Recommendations report={view} lang={lang} />}
+            <div className="results__grid">
+              <FactsPanel report={view} lang={lang} />
+              <AuditPanel report={view} lang={lang} />
+            </div>
+            <div className="results__grid">
+              <ShareOfVoice report={view} lang={lang} />
+              <SourcesPanel report={view} lang={lang} />
+            </div>
+            <PrintTranscripts report={view} lang={lang} />
           </div>
-          <div className="results__grid">
-            <ShareOfVoice report={view} />
-            <SourcesPanel report={view} />
-          </div>
-          {(!running || view.demo) && <Recommendations report={view} />}
-          <PrintTranscripts report={view} />
         </main>
       )}
 

@@ -9,6 +9,22 @@ describe('demo report', () => {
     expect(report.demo).toBe(true);
     expect(report.engines.every((e) => e.model?.startsWith('demo'))).toBe(true);
     expect(reportToHtml(report)).toContain('Demo data.');
+    expect(reportToHtml(report, 'mk')).toContain('Демо податоци.');
+    expect(report.audit!.domain).toBe('examplestudio.example');
+    expect(report.audit!.finalUrl.startsWith('https://examplestudio.example/')).toBe(true);
+  });
+
+  it('shows the fact check and website readiness on fictional data', () => {
+    expect(report.knownFacts!.officialName).toBe('Example Studio');
+    const wrong = report.factCheck.claims.filter((c) => c.status === 'possibly-wrong');
+    expect(wrong.map((c) => [c.engine, c.value])).toEqual([['gemini', '€300–400 per month']]);
+    expect(report.factCheck.claims.some((c) => c.engine === 'openai' && c.value === '€190' && c.status === 'correct')).toBe(true);
+    expect(report.factCheck.accuracy.score).toBe(83);
+    expect(report.factCheck.nameVariants.find((v) => v.name === 'Example Studio Digital Agency')!.kind).toBe('other');
+    expect(report.readiness.score).toBeGreaterThan(0);
+    expect(report.readiness.score).toBeLessThan(100);
+    expect(report.recommendations[0]!.id).toBe('fix-wrong-facts');
+    expect(report.recommendations.some((r) => r.status === 'done')).toBe(true);
   });
 
   it('covers every prompt for every engine', () => {
