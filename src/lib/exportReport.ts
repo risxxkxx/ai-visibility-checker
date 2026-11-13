@@ -274,7 +274,7 @@ export function reportToHtml(report: VisibilityReport, lang: ReportLanguage = 'e
 ${demoNote}
 <h2>${tx('scoreTitle')}</h2>
 <div class="score">
-  <div class="num">${s.score}<small>/100</small></div>
+  <div class="num">${s.band === 'no-data' ? '–' : s.score}<small>/100</small></div>
   <dl>
     <dt>${tx('mentionRate')} (× ${WEIGHTS.mention})</dt><dd>${pct(s.mentionRate)}, ${s.mentionedCount} ${tx('of')} ${s.answered} ${tx('answersWord')}</dd>
     <dt>${tx('position')} (× ${WEIGHTS.position})</dt><dd>${pct(s.positionScore)}${s.averagePosition !== null ? `, ${tx('averageRank')} ${rank(s.averagePosition)}` : ''}</dd>

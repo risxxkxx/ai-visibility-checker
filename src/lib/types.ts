@@ -88,7 +88,8 @@ export interface AnswerAnalysis {
 
 export interface ScoreBreakdown {
   score: number;
-  band: 'invisible' | 'emerging' | 'visible' | 'leading';
+  /** 'no-data' when no engine answered (all calls failed), so a 0 is never shown as a real result. */
+  band: 'no-data' | 'invisible' | 'emerging' | 'visible' | 'leading';
   mentionRate: number;
   positionScore: number;
   engineCoverage: number;

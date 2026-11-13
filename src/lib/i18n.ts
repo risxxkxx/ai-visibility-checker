@@ -120,6 +120,10 @@ export function t(lang: ReportLanguage, key: TextKey): string {
 }
 
 export const BAND_TEXT: Record<ScoreBreakdown['band'], Localized> = {
+  'no-data': L(
+    'No engine answered, so there is no score yet. Check the errors below and run again.',
+    'Ниеден асистент не одговори, па сè уште нема оценка. Видете ги грешките подолу и пробајте повторно.',
+  ),
   invisible: L('Assistants are not recommending you yet.', 'Асистентите сè уште не ве препорачуваат.'),
   emerging: L('You come up sometimes, usually not first.', 'Се појавувате понекогаш, обично не први.'),
   visible: L('You are part of the conversation.', 'Дел сте од разговорот.'),

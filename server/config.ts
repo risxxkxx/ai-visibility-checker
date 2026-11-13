@@ -9,6 +9,9 @@ export const DEFAULT_MODELS: Record<EngineId, string> = {
   gemini: 'gemini-3.8-flash',
 };
 
+/** Previous-generation Flash model: usually less busy when the newest one answers "high demand". */
+export const DEFAULT_GEMINI_FALLBACK = 'gemini-3.7-flash';
+
 export interface EngineConfig {
   id: EngineId;
   apiKey: string;
@@ -26,6 +29,8 @@ export interface ServerConfig {
   geminiGrounding: boolean;
   /** Sent as generationConfig.thinkingConfig.thinkingLevel; empty omits it. */
   geminiThinkingLevel: string;
+  /** Tried when the main Gemini model is busy (429/5xx). Empty disables the fallback. */
+  geminiFallbackModel: string;
   rateLimitRequests: number;
   rateLimitWindowMs: number;
 }
@@ -62,6 +67,7 @@ export function loadConfig(env: Env = process.env): ServerConfig {
     perplexityUrl: env.PERPLEXITY_API_URL?.trim() || 'https://api.perplexity.ai/v1/sonar',
     geminiGrounding: env.GEMINI_GROUNDING?.trim().toLowerCase() === 'true',
     geminiThinkingLevel: (env.GEMINI_THINKING_LEVEL ?? 'low').trim().toLowerCase(),
+    geminiFallbackModel: (env.GEMINI_FALLBACK_MODEL ?? DEFAULT_GEMINI_FALLBACK).trim().replace(/^models\//, ''),
     rateLimitRequests: int(env.RATE_LIMIT_REQUESTS, 45, 1, 1_000),
     rateLimitWindowMs: int(env.RATE_LIMIT_WINDOW_MS, 15 * 60_000, 10_000, 24 * 60 * 60_000),
   };

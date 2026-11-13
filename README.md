@@ -245,6 +245,7 @@ All variables are read by the Netlify Functions only. None is sent to the browse
 | `GEMINI_API_KEY` | | Enables Gemini (Gemini API `generateContent`, key sent in the `x-goog-api-key` header) |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model ID |
 | `GEMINI_GROUNDING` | `false` | `true` adds Grounding with Google Search (closer to the Gemini app; search queries are billed). Grounding sources are reported by domain, because Google returns expiring redirect links |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.7-flash` | Tried when the main Gemini model answers 429/5xx (e.g. "high demand"), after one retry of the main model. Empty disables it. The answer shows which model replied |
 | `GEMINI_THINKING_LEVEL` | `low` | Sent as `generationConfig.thinkingConfig.thinkingLevel`; set it empty to omit it |
 | `PAGESPEED_API_KEY` | | Optional. Adds Google PageSpeed Insights (mobile) to the website audit. The GEO checks run without it |
 | `ENGINE_TIMEOUT_MS` | `20000` | Timeout per engine call (2,000 to 28,000; Netlify stops synchronous functions at 30 s) |
@@ -271,6 +272,7 @@ Default model IDs were checked against the providers' documentation in November 
 - API keys exist only in function environment variables; `/api/engines` returns engine names and models, never keys.
 - One prompt per request, at most 300 characters, at most 4 engines, at most 15 prompts per run (tracked per run ID and IP), JSON bodies up to 4 KB.
 - The website audit only fetches public http(s) URLs: no credentials, standard ports only, no local or private hostnames or IPs (decimal, hex, octal and IPv6 forms included), every DNS answer must be public, a connect-time lookup blocks DNS rebinding, every redirect (at most 5) is checked again, 8 s timeout for the page and 5 s for side files, 2 MB cap on the page and 64 KB on side files after decompression, and only HTML/text bodies are read. Errors are returned as fixed messages without internal details.
+- Temporary upstream errors (429/5xx, network) get one retry after a short backoff, all inside the engine timeout; the monthly caps count prompts, so with retries the provider can see up to 3 requests per prompt (Google's daily quota still applies).
 - In-memory rate limit per IP, a timeout on every engine call, and `Promise.allSettled` so one failing engine never breaks a run.
 - Cross-origin browser requests are rejected. Provider error messages are shortened and scrubbed of anything that looks like a key (including Google `AIza...` keys).
 - Everything rendered from an answer is treated as text; the HTML export escapes every value.

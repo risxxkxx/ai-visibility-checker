@@ -216,13 +216,18 @@ export function providerErrorMessage(status: number, body: unknown): string {
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Calls one engine with a timeout. Never throws: failures come back as ok=false answers. */
-export async function callEngine(
+/** Upstream statuses worth one more try: rate limits and temporary overload ("high demand"). */
+export const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+type Attempt = { answer: EngineAnswer; retryable: boolean };
+
+async function attemptOnce(
   engine: EngineConfig,
   prompt: string,
   cfg: ServerConfig,
-  fetchImpl: FetchLike = fetch,
-): Promise<EngineAnswer> {
+  fetchImpl: FetchLike,
+  timeoutMs: number,
+): Promise<Attempt> {
   const provider = PROVIDERS[engine.id];
   const req = provider.request(engine, prompt, cfg);
   const started = Date.now();
@@ -232,7 +237,7 @@ export async function callEngine(
       method: 'POST',
       headers: req.headers,
       body: JSON.stringify(req.body),
-      signal: AbortSignal.timeout(cfg.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const raw = await res.text();
     let data: unknown = raw;
@@ -242,26 +247,68 @@ export async function callEngine(
       // keep raw text for the error message
     }
     if (!res.ok) {
-      return { ...base, ok: false, text: '', citations: [], error: providerErrorMessage(res.status, data), latencyMs: Date.now() - started };
+      return {
+        answer: { ...base, ok: false, text: '', citations: [], error: providerErrorMessage(res.status, data), latencyMs: Date.now() - started },
+        retryable: RETRYABLE_STATUSES.has(res.status),
+      };
     }
     const parsed = provider.parse(data);
     if (!parsed.text) {
       return {
-        ...base,
-        ok: false,
-        text: '',
-        citations: parsed.citations,
-        error: parsed.note ?? 'Empty answer',
-        latencyMs: Date.now() - started,
+        answer: { ...base, ok: false, text: '', citations: parsed.citations, error: parsed.note ?? 'Empty answer', latencyMs: Date.now() - started },
+        retryable: false,
       };
     }
-    return { ...base, ok: true, text: parsed.text, citations: parsed.citations, latencyMs: Date.now() - started };
+    return { answer: { ...base, ok: true, text: parsed.text, citations: parsed.citations, latencyMs: Date.now() - started }, retryable: false };
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
-    const error =
-      name === 'TimeoutError' || name === 'AbortError'
-        ? `Timed out after ${Math.round(cfg.timeoutMs / 1000)}s`
-        : 'Network error';
-    return { ...base, ok: false, text: '', citations: [], error, latencyMs: Date.now() - started };
+    const timedOut = name === 'TimeoutError' || name === 'AbortError';
+    const error = timedOut ? `Timed out after ${Math.round(cfg.timeoutMs / 1000)}s` : 'Network error';
+    return { answer: { ...base, ok: false, text: '', citations: [], error, latencyMs: Date.now() - started }, retryable: !timedOut };
   }
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Below this much remaining time another attempt isn't worth starting. */
+const MIN_ATTEMPT_MS = 3_000;
+
+/**
+ * Calls one engine within cfg.timeoutMs in total. Never throws: failures come back as ok=false answers.
+ * On a temporary upstream error (429/5xx, network) it retries once after a short backoff, and for
+ * Gemini it then tries GEMINI_FALLBACK_MODEL, because a busy model often answers "high demand" (503)
+ * while an older one is free. The answer records the model that actually answered.
+ */
+export async function callEngine(
+  engine: EngineConfig,
+  prompt: string,
+  cfg: ServerConfig,
+  fetchImpl: FetchLike = fetch,
+  sleep: (ms: number) => Promise<void> = defaultSleep,
+): Promise<EngineAnswer> {
+  const started = Date.now();
+  const deadline = started + cfg.timeoutMs;
+  const fallback = engine.id === 'gemini' ? cfg.geminiFallbackModel : '';
+  const plan: { model: string; backoffMs: number }[] = [
+    { model: engine.model, backoffMs: 0 },
+    { model: engine.model, backoffMs: 1_200 },
+    ...(fallback && fallback !== engine.model ? [{ model: fallback, backoffMs: 300 }] : []),
+  ];
+
+  let first: EngineAnswer | null = null;
+  for (const [i, step] of plan.entries()) {
+    if (i > 0) {
+      if (deadline - Date.now() - step.backoffMs < MIN_ATTEMPT_MS) break;
+      await sleep(step.backoffMs);
+    }
+    const remaining = Math.max(1_000, deadline - Date.now());
+    const { answer, retryable } = await attemptOnce({ ...engine, model: step.model }, prompt, cfg, fetchImpl, remaining);
+    if (answer.ok) return { ...answer, latencyMs: Date.now() - started };
+    first ??= answer;
+    if (!retryable) {
+      // A non-temporary error from the fallback shouldn't hide the original reason.
+      return step.model === engine.model ? { ...answer, latencyMs: Date.now() - started } : { ...first, latencyMs: Date.now() - started };
+    }
+  }
+  return { ...first!, latencyMs: Date.now() - started };
 }

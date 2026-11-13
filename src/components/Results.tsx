@@ -47,7 +47,7 @@ export function ScorePanel({ report, running, lang }: Base & { running: boolean 
         {t(lang, 'scoreTitle')}
       </h2>
       <p className="score__number" aria-live="polite">
-        <span className="score__value">{s.score}</span>
+        <span className="score__value">{s.band === 'no-data' ? '–' : s.score}</span>
         <span className="score__of">/100</span>
       </p>
       <div className="score__marker" aria-hidden="true">

@@ -30,7 +30,7 @@ export function positionValue(analysis: Pick<AnswerAnalysis, 'mentioned' | 'posi
   return 0.2;
 }
 
-export function scoreBand(score: number): ScoreBreakdown['band'] {
+export function scoreBand(score: number): Exclude<ScoreBreakdown['band'], 'no-data'> {
   if (score >= 70) return 'leading';
   if (score >= 45) return 'visible';
   if (score >= 20) return 'emerging';
@@ -59,7 +59,7 @@ export function computeScore(analyses: AnswerAnalysis[]): ScoreBreakdown {
 
   return {
     score,
-    band: scoreBand(score),
+    band: n === 0 ? 'no-data' : scoreBand(score),
     mentionRate: round3(mentionRate),
     positionScore: round3(positionScore),
     engineCoverage: round3(engineCoverage),
