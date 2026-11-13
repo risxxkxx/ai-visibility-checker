@@ -322,15 +322,19 @@ export function Recommendations({ report }: { report: VisibilityReport }) {
                   checked={done.has(r.id)}
                   onChange={() => toggle(r.id)}
                   onClick={(e) => e.stopPropagation()}
-                  aria-label={`Mark “${r.title}” as done`}
+                  aria-label={`Mark “${r.title.en}” as done`}
                 />
-                <span className="rec__title">{r.title}</span>
-                <span className={`priority priority--${r.priority}`}>{r.priority}</span>
+                <span className="rec__title">{r.title.en}</span>
+                <span className={`priority priority--${r.priority}`}>{r.status === 'done' ? 'done' : r.priority}</span>
               </summary>
-              <p className="rec__reason">{r.reason}</p>
+              {r.why.map((w) => (
+                <p key={w.en} className="rec__reason">
+                  {w.en}
+                </p>
+              ))}
               <ul className="rec__steps">
                 {r.steps.map((s) => (
-                  <li key={s}>{s}</li>
+                  <li key={s.en}>{s.en}</li>
                 ))}
               </ul>
             </details>

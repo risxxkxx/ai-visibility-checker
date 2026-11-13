@@ -111,22 +111,30 @@ export interface ShareOfVoiceRow {
 export type Priority = 'high' | 'medium' | 'low';
 
 export type RecommendationId =
-  | 'schema-localbusiness'
+  | 'fix-wrong-facts'
   | 'google-business-profile'
+  | 'schema-localbusiness'
+  | 'consistent-nap'
+  | 'ai-crawlers'
   | 'reviews'
   | 'service-pages'
-  | 'llms-txt'
   | 'directory-citations'
-  | 'consistent-nap'
-  | 'local-language-content';
+  | 'local-language-content'
+  | 'llms-txt'
+  | 'bing'
+  | 'page-speed';
 
 export interface Recommendation {
   id: RecommendationId;
   priority: Priority;
-  title: string;
-  /** Why this was recommended, built from the run's numbers. */
-  reason: string;
-  steps: string[];
+  /** "done" when this run's evidence shows it is already in place (e.g. schema found on the site). */
+  status: 'todo' | 'done';
+  title: Localized;
+  /** Evidence from this run: numbers, quotes from answers, what the site audit found. */
+  why: Localized[];
+  steps: Localized[];
+  /** Optional copy-paste draft (JSON-LD, llms.txt) built from the known facts. */
+  snippet?: { label: Localized; code: string };
 }
 
 // ---------- Known facts and fact checking ----------
@@ -311,8 +319,37 @@ export interface SiteAudit {
   psiStatus: 'ok' | 'not-configured' | 'failed' | 'skipped';
 }
 
+export type ReadinessId =
+  | 'schema'
+  | 'schema-fields'
+  | 'llms-txt'
+  | 'ai-crawlers'
+  | 'languages'
+  | 'service-pages'
+  | 'prices-published'
+  | 'name-consistency'
+  | 'phone-on-site'
+  | 'https'
+  | 'mobile';
+
+export interface ReadinessCheck {
+  id: ReadinessId;
+  state: 'pass' | 'fail' | 'unknown';
+  weight: number;
+  label: Localized;
+  detail: Localized;
+}
+
+export interface Readiness {
+  /** 0-100, or null when the site was not audited. See src/lib/readiness.ts. */
+  score: number | null;
+  checks: ReadinessCheck[];
+}
+
+export type AuditStatus = 'off' | 'no-domain' | 'running' | 'done' | 'failed';
+
 export interface VisibilityReport {
-  version: 1;
+  version: 2;
   generatedAt: string;
   /** True when the report was built from bundled example data, not live engine calls. */
   demo: boolean;
@@ -324,5 +361,12 @@ export interface VisibilityReport {
   score: ScoreBreakdown;
   shareOfVoice: ShareOfVoiceRow[];
   topCitedDomains: { domain: string; count: number }[];
+  /** Known facts entered by the owner, or null when the section was left empty. */
+  knownFacts: KnownFacts | null;
+  factCheck: FactCheck;
+  audit: SiteAudit | null;
+  auditStatus: AuditStatus;
+  auditError: string | null;
+  readiness: Readiness;
   recommendations: Recommendation[];
 }

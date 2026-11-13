@@ -81,10 +81,10 @@ export function reportToHtml(report: VisibilityReport): string {
   const recs = report.recommendations
     .map(
       (r) => `
-      <section class="rec rec-${r.priority}">
-        <h3>${e(r.title)} <span class="pri">${r.priority}</span></h3>
-        <p>${e(r.reason)}</p>
-        <ul>${r.steps.map((step) => `<li>${e(step)}</li>`).join('')}</ul>
+      <section class="rec rec-${r.status === 'done' ? 'done' : r.priority}">
+        <h3>${e(r.title.en)} <span class="pri">${r.status === 'done' ? 'done' : r.priority}</span></h3>
+        ${r.why.map((w) => `<p>${e(w.en)}</p>`).join('')}
+        <ul>${r.steps.map((step) => `<li>${e(step.en)}</li>`).join('')}</ul>
       </section>`,
     )
     .join('');
