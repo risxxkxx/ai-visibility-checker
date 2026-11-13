@@ -129,6 +129,105 @@ export interface Recommendation {
   steps: string[];
 }
 
+// ---------- Known facts and fact checking ----------
+
+/** Text in both report languages. */
+export interface Localized {
+  en: string;
+  mk: string;
+}
+
+export type ReportLanguage = 'en' | 'mk';
+
+export type Currency = 'EUR' | 'MKD' | 'USD';
+
+export interface PriceFact {
+  /** What the price is for, e.g. "One Page website" or "Social media management". */
+  label: string;
+  /** The reference ("from") price. */
+  amount: number;
+  currency: Currency;
+  perMonth: boolean;
+}
+
+/** Facts the owner knows are true, used to check what AI answers say. All optional. */
+export interface KnownFacts {
+  officialName: string;
+  /** Other names that are fine to use, e.g. the Cyrillic spelling. */
+  nameVariants: string[];
+  phones: string[];
+  prices: PriceFact[];
+  city: string;
+  address: string;
+}
+
+export type ClaimKind = 'phone' | 'price' | 'city' | 'address';
+
+/** A claim is never called wrong with certainty: "possibly-wrong" means "verify this". */
+export type ClaimStatus = 'correct' | 'possibly-wrong' | 'unverified';
+
+export interface SnippetHighlight {
+  start: number;
+  end: number;
+  kind: 'claim' | 'brand';
+}
+
+export interface Snippet {
+  text: string;
+  highlights: SnippetHighlight[];
+}
+
+export interface StatedPrice {
+  min: number;
+  max: number | null;
+  currency: Currency;
+  perMonth: boolean;
+  from: boolean;
+}
+
+export interface FactClaim {
+  kind: ClaimKind;
+  engine: EngineId;
+  prompt: string;
+  /** The value as the answer wrote it, e.g. "€300–400 per month". */
+  value: string;
+  status: ClaimStatus;
+  /** Key of the known fact it was compared with ("phone:0", "price:1", "city", "address"). */
+  factKey: string | null;
+  price?: StatedPrice;
+  snippet: Snippet;
+}
+
+export type FactStatus = 'correct' | 'possibly-wrong' | 'not-mentioned';
+
+export interface FactRow {
+  key: string;
+  kind: ClaimKind;
+  label: Localized;
+  expected: Localized;
+  status: FactStatus;
+  correct: number;
+  wrong: number;
+  engines: EngineId[];
+}
+
+export interface NameVariant {
+  name: string;
+  count: number;
+  engines: EngineId[];
+  kind: 'official' | 'allowed' | 'other';
+}
+
+export interface FactCheck {
+  /** Answers that named the business, i.e. the ones that were read for facts. */
+  answersChecked: number;
+  claims: FactClaim[];
+  rows: FactRow[];
+  nameVariants: NameVariant[];
+  /** Accuracy sub-score: correct ÷ (correct + possibly wrong) claims, null when nothing could be checked. */
+  accuracy: { correct: number; wrong: number; score: number | null };
+}
+
 // ---------- Website audit (GEO readiness) ----------
 
 /** Result of a side check that can fail for reasons unrelated to the site (timeouts, blocks). */
