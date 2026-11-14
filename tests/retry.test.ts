@@ -26,19 +26,34 @@ describe('callEngine retries and Gemini fallback', () => {
     const calls: string[] = [];
     const fetchImpl: FetchLike = vi.fn(async (url: string) => {
       calls.push(url);
-      return url.includes('gemini-3.7-flash') ? geminiOk('NULA') : busy();
+      return url.includes('gemini-3.5-flash') ? geminiOk('NULA') : busy();
     });
     const a = await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
-    expect(a).toMatchObject({ ok: true, model: 'gemini-3.7-flash', text: 'NULA' });
-    expect(calls.map((u) => (u.includes('3.8') ? '3.8' : '3.7'))).toEqual(['3.8', '3.8', '3.7']);
+    expect(a).toMatchObject({ ok: true, model: 'gemini-3.5-flash', text: 'NULA' });
+    expect(calls.map((u) => (u.includes('3.8') ? '3.8' : '3.5'))).toEqual(['3.8', '3.8', '3.5']);
   });
 
-  it('keeps the original error when the fallback fails for another reason', async () => {
+  it('tries the next fallback when one does not exist, and reports why each failed', async () => {
+    const calls: string[] = [];
+    const fetchImpl: FetchLike = vi.fn(async (url: string) => {
+      calls.push(url);
+      if (url.includes('gemini-3.5-flash')) return Response.json({ error: { message: 'model not found' } }, { status: 404 });
+      if (url.includes('gemini-3.1-flash-lite')) return geminiOk('NULA');
+      return busy();
+    });
+    const a = await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
+    expect(a).toMatchObject({ ok: true, model: 'gemini-3.1-flash-lite' });
+    expect(calls).toHaveLength(4);
+  });
+
+  it('keeps the original error and names the failed fallbacks when everything fails', async () => {
     const fetchImpl: FetchLike = vi.fn(async (url: string) =>
-      url.includes('gemini-3.7-flash') ? Response.json({ error: { message: 'model not found' } }, { status: 404 }) : busy(),
+      url.includes('gemini-3.8-flash') ? busy() : Response.json({ error: { message: 'model not found' } }, { status: 404 }),
     );
     const a = await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
-    expect(a).toMatchObject({ ok: false, model: 'gemini-3.8-flash', error: expect.stringMatching(/^HTTP 503: .*high demand/) });
+    expect(a.ok).toBe(false);
+    expect(a.model).toBe('gemini-3.8-flash');
+    expect(a.error).toMatch(/^HTTP 503: .*high demand.*\(fallback gemini-3\.5-flash: HTTP 404.*gemini-3\.1-flash-lite: HTTP 404/);
   });
 
   it('goes straight to the fallback when the main model times out', async () => {
@@ -49,8 +64,8 @@ describe('callEngine retries and Gemini fallback', () => {
       return geminiOk('NULA');
     });
     const a = await callEngine(engine, 'q', cfg, fetchImpl, noSleep);
-    expect(a).toMatchObject({ ok: true, model: 'gemini-3.7-flash' });
-    expect(calls.map((u) => (u.includes('3.8') ? '3.8' : '3.7'))).toEqual(['3.8', '3.7']);
+    expect(a).toMatchObject({ ok: true, model: 'gemini-3.5-flash' });
+    expect(calls.map((u) => (u.includes('3.8') ? '3.8' : '3.5'))).toEqual(['3.8', '3.5']);
   });
 
   it('does not retry client errors like 400', async () => {

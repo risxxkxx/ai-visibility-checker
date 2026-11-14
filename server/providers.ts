@@ -282,7 +282,7 @@ const MIN_ATTEMPT_MS = 3_000;
 /**
  * Calls one engine within cfg.timeoutMs in total. Never throws: failures come back as ok=false answers.
  * On a temporary upstream error (429/5xx, network) it retries once after a short backoff, and for
- * Gemini it then tries GEMINI_FALLBACK_MODEL, because a busy model often answers "high demand" (503)
+ * Gemini it then tries the GEMINI_FALLBACK_MODEL list in order, because a busy model often answers "high demand" (503)
  * while an older one is free. The answer records the model that actually answered.
  */
 export async function callEngine(
@@ -294,17 +294,18 @@ export async function callEngine(
 ): Promise<EngineAnswer> {
   const started = Date.now();
   const deadline = started + cfg.timeoutMs;
-  const fallback = engine.id === 'gemini' && cfg.geminiFallbackModel !== engine.model ? cfg.geminiFallbackModel : '';
-  // With a fallback available, the main model gets ~55% of the budget so a slow ("high demand") model
-  // still leaves time for the fallback instead of using up the whole timeout.
-  const mainBudget = fallback ? Math.round(cfg.timeoutMs * 0.55) : cfg.timeoutMs;
+  const fallbacks = engine.id === 'gemini' ? cfg.geminiFallbackModels.filter((m) => m !== engine.model) : [];
+  // With fallbacks available, the main model gets ~45% of the budget so a slow ("high demand") model
+  // still leaves time for them instead of using up the whole timeout.
+  const mainBudget = fallbacks.length > 0 ? Math.round(cfg.timeoutMs * 0.45) : cfg.timeoutMs;
   const plan: { model: string; backoffMs: number }[] = [
     { model: engine.model, backoffMs: 0 },
     { model: engine.model, backoffMs: 1_200 },
-    ...(fallback ? [{ model: fallback, backoffMs: 300 }] : []),
+    ...fallbacks.map((model) => ({ model, backoffMs: 200 })),
   ];
 
   let first: EngineAnswer | null = null;
+  const fallbackErrors: string[] = [];
   let skipMain = false;
   for (const [i, step] of plan.entries()) {
     const isMain = step.model === engine.model;
@@ -318,15 +319,16 @@ export async function callEngine(
     const { answer, retryable, timedOut } = await attemptOnce({ ...engine, model: step.model }, prompt, cfg, fetchImpl, budget);
     if (answer.ok) return { ...answer, latencyMs: Date.now() - started };
     first ??= answer;
-    // A timeout means the model is too slow right now: don't retry it, go to the fallback.
-    if (timedOut && isMain) {
-      skipMain = true;
+    if (isMain) {
+      // A timeout means the model is too slow right now: don't retry it, go to the fallbacks.
+      if (timedOut) skipMain = true;
+      else if (!retryable) return { ...answer, latencyMs: Date.now() - started };
+      else if (i === 0 && fallbacks.length > 0 && started + mainBudget - Date.now() < MIN_ATTEMPT_MS + step.backoffMs) skipMain = true;
       continue;
     }
-    if (!retryable) {
-      // A non-temporary error from the fallback shouldn't hide the original reason.
-      return isMain ? { ...answer, latencyMs: Date.now() - started } : { ...first, latencyMs: Date.now() - started };
-    }
+    // A fallback failed: note why (so a wrong model name is visible) and try the next one.
+    fallbackErrors.push(`${step.model}: ${answer.error ?? 'failed'}`);
   }
-  return { ...first!, latencyMs: Date.now() - started };
+  const error = fallbackErrors.length > 0 ? `${first!.error ?? 'failed'} (fallback ${fallbackErrors.join('; ')})`.slice(0, 400) : first!.error;
+  return { ...first!, error, latencyMs: Date.now() - started };
 }

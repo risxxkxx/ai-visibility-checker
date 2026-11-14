@@ -245,7 +245,7 @@ All variables are read by the Netlify Functions only. None is sent to the browse
 | `GEMINI_API_KEY` | | Enables Gemini (Gemini API `generateContent`, key sent in the `x-goog-api-key` header) |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model ID |
 | `GEMINI_GROUNDING` | `false` | `true` adds Grounding with Google Search (closer to the Gemini app; search queries are billed). Grounding sources are reported by domain, because Google returns expiring redirect links |
-| `GEMINI_FALLBACK_MODEL` | `gemini-3.7-flash` | Tried when the main Gemini model answers 429/5xx (e.g. "high demand"), after one retry of the main model. Empty disables it. The answer shows which model replied |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.5-flash,gemini-3.1-flash-lite` | Comma-separated list, tried in order when the main Gemini model answers 429/5xx ("high demand") or is too slow. Empty disables it. The answer shows which model replied; if all fail, the error names each fallback's reason |
 | `GEMINI_THINKING_LEVEL` | `low` | Sent as `generationConfig.thinkingConfig.thinkingLevel`; set it empty to omit it |
 | `PAGESPEED_API_KEY` | | Optional. Adds Google PageSpeed Insights (mobile) to the website audit. The GEO checks run without it |
 | `ENGINE_TIMEOUT_MS` | `25000` | Total time per engine call, retries and Gemini fallback included (2,000 to 28,000; Netlify stops synchronous functions at 30 s). With a fallback, the main Gemini model gets about 55% of it |
