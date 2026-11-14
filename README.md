@@ -303,7 +303,7 @@ Set these in the checker's Netlify site, next to `GEMINI_API_KEY`. Mark the keys
 | --- | --- | --- |
 | `PUBLIC_ALLOWED_ORIGINS` | `https://agencynula.com,https://www.agencynula.com` | Comma-separated origins allowed by CORS. Turnstile's reported hostname must also be one of these hosts. Add `http://localhost:8888` only for local testing |
 | `TURNSTILE_SECRET_KEY` | | **Required.** Cloudflare Turnstile secret for the widget on the site (action `ai-check`). Missing: 503 |
-| `SUPABASE_URL` | | **Required.** `https://<project>.supabase.co` (this project: `https://fbxpnxxasszincqghozo.supabase.co`) |
+| `SUPABASE_URL` | | **Required.** `https://<project>.supabase.co` |
 | `SUPABASE_SECRET_KEY` | | **Required.** A secret key (`sb_secret_...`) or the legacy `service_role` JWT. Sent as `apikey`; a JWT (`eyJ...`) also goes in `Authorization: Bearer` |
 | `IP_HASH_SALT` | | **Required**, at least 16 random characters. IPs are stored only as SHA-256(IP + salt) |
 | `PUBLIC_MONTHLY_CHECKS` | `150` | Fresh public checks per calendar month (UTC), all visitors together |

@@ -25,7 +25,7 @@ const NOW = () => new Date('2026-11-13T10:00:00Z');
 
 const ENV = {
   TURNSTILE_SECRET_KEY: SECRET,
-  SUPABASE_URL: 'https://fbxpnxxasszincqghozo.supabase.co',
+  SUPABASE_URL: 'https://testproject.supabase.co',
   SUPABASE_SECRET_KEY: SB_KEY,
   IP_HASH_SALT: SALT,
   GEMINI_API_KEY: GEMINI_KEY,
