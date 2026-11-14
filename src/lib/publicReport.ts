@@ -1,8 +1,9 @@
 /**
  * What the public mini test (POST /api/public/check and /api/public/lead) shows a visitor.
- * Pure: built from a VisibilityReport, in one language. The summary is deliberately small;
- * the full report (all recommendations, per-prompt results, readiness checks, drafts) is only
- * returned after the visitor leaves an e-mail address.
+ * Pure: built from a VisibilityReport, in one language. The visitor only ever gets the summary:
+ * scores, who AI named, and how many problems were found (not which). The full report (all
+ * recommendations, per-prompt results, readiness checks, drafts) is for the owner only
+ * (GET /api/owner/report, behind the access code).
  */
 import type { BusinessInput, EngineAnswer, Priority, ReadinessCheck, ReportLanguage, ScoreBreakdown, VisibilityReport } from './types.ts';
 import { extractLists, itemHead } from './lists.ts';
@@ -80,9 +81,10 @@ export function competitorsFromAnswers(answers: EngineAnswer[], business: Busine
   return namedBusinesses(answers, business, LIMITS.competitors).map((n) => n.name.slice(0, LIMITS.competitor));
 }
 
-export interface PublicFix {
-  title: string;
-  why: string;
+/** How many open problems the check found. Counts only: the details are in the owner's report. */
+export interface PublicIssues {
+  total: number;
+  high: number;
 }
 
 export interface PublicSummary {
@@ -98,18 +100,15 @@ export interface PublicSummary {
   readiness: { score: number | null };
   mentions: { count: number; answered: number; total: number };
   competitors: NamedBusiness[];
-  topFixes: PublicFix[];
+  issues: PublicIssues;
 }
 
-function firstFixes(report: VisibilityReport, lang: ReportLanguage, n: number): PublicFix[] {
+function countIssues(report: VisibilityReport): PublicIssues {
   const todo = report.recommendations.filter((r) => r.status === 'todo');
-  if (todo.length > 0) return todo.slice(0, n).map((r) => ({ title: r.title[lang], why: r.why[0]?.[lang] ?? '' }));
-  // No AI answer means no recommendations; fall back to the failed website checks.
-  return report.readiness.checks
-    .filter((c) => c.state === 'fail')
-    .sort((a, b) => b.weight - a.weight)
-    .slice(0, n)
-    .map((c) => ({ title: c.label[lang], why: c.detail[lang] }));
+  if (todo.length > 0) return { total: todo.length, high: todo.filter((r) => r.priority === 'high').length };
+  // No AI answer means no recommendations; count the failed website checks instead.
+  const failed = report.readiness.checks.filter((c) => c.state === 'fail');
+  return { total: failed.length, high: 0 };
 }
 
 function competitorRows(report: VisibilityReport): NamedBusiness[] {
@@ -130,7 +129,7 @@ export function buildPublicSummary(report: VisibilityReport, opts: { checkId: st
     readiness: { score: report.readiness.score },
     mentions: { count: report.score.mentionedCount, answered: report.score.answered, total: report.prompts.length },
     competitors: competitorRows(report),
-    topFixes: firstFixes(report, lang, 3),
+    issues: countIssues(report),
   };
 }
 
@@ -160,7 +159,7 @@ export interface PublicReadinessCheck {
   detail: string;
 }
 
-export interface PublicFullReport extends Omit<PublicSummary, 'topFixes' | 'cached'> {
+export interface PublicFullReport extends Omit<PublicSummary, 'issues' | 'cached'> {
   prompts: PublicPromptRow[];
   recommendations: PublicRecommendation[];
   readinessChecks: PublicReadinessCheck[];
@@ -172,10 +171,10 @@ export interface PublicFullReport extends Omit<PublicSummary, 'topFixes' | 'cach
 export function buildPublicFullReport(report: VisibilityReport, opts: { checkId: string; lang: ReportLanguage }): PublicFullReport {
   const { lang } = opts;
   const summary: Partial<PublicSummary> = buildPublicSummary(report, { checkId: opts.checkId, lang });
-  delete summary.topFixes;
+  delete summary.issues;
   delete summary.cached;
   return {
-    ...(summary as Omit<PublicSummary, 'topFixes' | 'cached'>),
+    ...(summary as Omit<PublicSummary, 'issues' | 'cached'>),
     prompts: report.analyses.map((a) => ({
       prompt: a.prompt,
       answered: a.ok,

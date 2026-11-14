@@ -63,6 +63,31 @@ export interface SupabaseClient {
   getCheck(id: string): Promise<StoredCheck | null>;
   /** "duplicate" when (check_id, lower(email)) already exists. */
   insertLead(row: LeadInsert): Promise<'created' | 'duplicate'>;
+  /** Owner view: newest checks with the leads left for them. */
+  listChecks(limit: number): Promise<OwnerCheckRow[]>;
+  listLeads(checkId: string): Promise<OwnerLead[]>;
+}
+
+export interface OwnerLead {
+  email: string;
+  name: string | null;
+  phone: string | null;
+  created_at: string;
+  status: string;
+}
+
+export interface OwnerCheckRow {
+  id: string;
+  created_at: string;
+  domain: string;
+  business_name: string;
+  category: string;
+  city: string;
+  lang: 'mk' | 'en';
+  visibility_score: number | null;
+  readiness_score: number | null;
+  answered: number;
+  leads: OwnerLead[];
 }
 
 /** Legacy service_role keys are JWTs and also go in Authorization; new sb_secret_ keys only in apikey. */
@@ -145,6 +170,24 @@ export function createSupabase(settings: SupabaseSettings, fetchImpl: FetchLike 
       const code = typeof r.data === 'object' && r.data !== null ? (r.data as { code?: unknown }).code : undefined;
       if (r.status === 409 || code === '23505') return 'duplicate';
       throw new SupabaseError('Saving the lead failed', r.status);
+    },
+
+    async listChecks(limit) {
+      const q = new URLSearchParams({
+        select: 'id,created_at,domain,business_name,category,city,lang,visibility_score,readiness_score,answered,leads(email,name,phone,created_at,status)',
+        order: 'created_at.desc',
+        limit: String(Math.max(1, Math.min(200, limit))),
+      });
+      const r = await call(`/public_checks?${q}`, { method: 'GET' });
+      if (!ok(r.status) || !Array.isArray(r.data)) throw new SupabaseError('Loading the checks failed', r.status);
+      return r.data as OwnerCheckRow[];
+    },
+
+    async listLeads(checkId) {
+      const q = new URLSearchParams({ select: 'email,name,phone,created_at,status', check_id: `eq.${checkId}`, order: 'created_at.asc' });
+      const r = await call(`/leads?${q}`, { method: 'GET' });
+      if (!ok(r.status) || !Array.isArray(r.data)) throw new SupabaseError('Loading the leads failed', r.status);
+      return r.data as OwnerLead[];
     },
   };
 }

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { Context } from '@netlify/functions';
 import { createPublicCheckHandler } from '../netlify/functions/public-check.ts';
+import { createOwnerHandler } from '../netlify/functions/owner.ts';
 import { createPublicLeadHandler } from '../netlify/functions/public-lead.ts';
 import { GuardError, type SafeFetchResult } from '../server/audit/ssrf.mjs';
 import type { FetchPage } from '../server/siteAudit.ts';
@@ -44,7 +45,7 @@ const GOOD_ANSWER = [
 ].join('\n');
 
 type FetchFn = (url: string, init: RequestInit) => Promise<Response>;
-type SummaryJson = { status: string; visibility: { score: number | null; band: string }; readiness: { score: number | null }; mentions: unknown; topFixes: unknown[] };
+type SummaryJson = { status: string; visibility: { score: number | null; band: string }; readiness: { score: number | null }; mentions: unknown; issues: { total: number; high: number } };
 
 interface Backend {
   fetch: ReturnType<typeof vi.fn<FetchFn>>;
@@ -103,6 +104,10 @@ function backend(opts: BackendOptions = {}): Backend {
         const row = { ...body, id: `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`, created_at: NOW().toISOString() };
         checks.push(row);
         return Response.json([{ id: row.id }], { status: 201 });
+      }
+      if (u.pathname === '/rest/v1/leads' && init.method === 'GET') {
+        const id = u.searchParams.get('check_id')?.replace(/^eq\./, '');
+        return Response.json(leads.filter((l) => l.check_id === id).map((l) => ({ ...l, created_at: NOW().toISOString(), status: 'new' })));
       }
       if (u.pathname === '/rest/v1/leads' && init.method === 'POST') {
         const dup = leads.some((l) => l.check_id === body!.check_id && String(l.email).toLowerCase() === String(body!.email).toLowerCase());
@@ -284,7 +289,7 @@ describe('POST /api/public/check', () => {
     const text = await textOf(res);
     const summary = JSON.parse(text) as Record<string, unknown>;
     expect(Object.keys(summary).sort()).toEqual(
-      ['business', 'cached', 'checkId', 'checkedAt', 'competitors', 'lang', 'mentions', 'readiness', 'status', 'topFixes', 'visibility'].sort(),
+      ['business', 'cached', 'checkId', 'checkedAt', 'competitors', 'issues', 'lang', 'mentions', 'readiness', 'status', 'visibility'].sort(),
     );
     expect(summary).toMatchObject({
       status: 'ok',
@@ -300,10 +305,12 @@ describe('POST /api/public/check', () => {
     expect((summary.visibility as { score: number }).score).toBeGreaterThan(0);
     expect((summary.visibility as { bandText: string }).bandText).toMatch(/\w/);
     expect((summary.readiness as { score: number }).score).toBeGreaterThan(0);
-    const fixes = summary.topFixes as { title: string; why: string }[];
-    expect(fixes).toHaveLength(3);
-    for (const f of fixes) expect(Object.keys(f).sort()).toEqual(['title', 'why']);
-    // Nothing from the full report leaks: no answers, steps, prompts or drafts.
+    const issues = summary.issues as { total: number; high: number };
+    expect(Object.keys(issues).sort()).toEqual(['high', 'total']);
+    expect(issues.total).toBeGreaterThan(3);
+    // Counts only: no recommendation titles, answers, steps, prompts or drafts reach the visitor.
+    expect(text).not.toMatch(/schema\.org|LocalBusiness|llms\.txt|Google Business/i);
+    expect(text).not.toMatch(/"title"|"why"|"topFixes"|"recommendations"/);
     expect(text).not.toContain('fast service, fair prices');
     expect(text).not.toContain('application/ld+json');
     expect(text).not.toMatch(/"steps"|"answers"|"prompts"|"report"|"analyses"/);
@@ -327,9 +334,8 @@ describe('POST /api/public/check', () => {
   it('writes Macedonian prompts and text when lang is mk', async () => {
     const b = backend();
     const res = await checkHandler(b)(post('/api/public/check', checkBody({ lang: 'mk', category: 'вулканизер', city: 'Скопје' })), ctx());
-    const summary = (await res.json()) as { visibility: { bandText: string }; topFixes: { title: string }[] };
+    const summary = (await res.json()) as { visibility: { bandText: string } };
     expect(summary.visibility.bandText).toMatch(/[а-ш]/);
-    expect(summary.topFixes[0]!.title).toMatch(/[а-ш]/);
     const prompt = JSON.parse(String(b.calls.find((c) => c.url.includes('generativelanguage'))!.init.body)).contents[0].parts[0].text as string;
     expect(prompt).toContain('вулканизер');
     expect(prompt).toContain('Скопје');
@@ -415,7 +421,7 @@ describe('POST /api/public/check', () => {
     expect(summary.visibility.band).toBe('no-data');
     expect(summary.mentions).toEqual({ count: 0, answered: 0, total: 5 });
     expect(summary.readiness.score).toBeGreaterThan(0);
-    expect(summary.topFixes.length).toBeGreaterThan(0);
+    expect(summary.issues.total).toBeGreaterThan(0);
     expect(b.checks[0]).toMatchObject({ visibility_score: null, answered: 0 });
   }, 15_000);
 
@@ -470,8 +476,9 @@ describe('POST /api/public/lead', () => {
     const { b, checkId } = await withCheck();
     const res = await leadHandler(b)(post('/api/public/lead', leadBody(checkId, { lang: 'mk' })), ctx());
     expect(res.status).toBe(200);
-    const data = JSON.parse(await textOf(res)) as { ok: boolean; duplicate: boolean; report: PublicFullReport };
-    expect(data).toMatchObject({ ok: true, duplicate: false });
+    const leadText = await textOf(res);
+    // The visitor gets a confirmation only, never the report.
+    expect(JSON.parse(leadText)).toEqual({ ok: true, duplicate: false });
     expect(b.leads[0]).toEqual({
       check_id: checkId,
       email: 'owner@primer.example',
@@ -482,7 +489,19 @@ describe('POST /api/public/lead', () => {
     });
     expect(String(b.leads[0]!.consent_text)).toContain(CONSENT_TEXT.mk);
 
-    const r = data.report;
+    // The owner reads the full report with the access code.
+    const owner = createOwnerHandler({ env: () => ({ ...ENV, ACCESS_CODE: 'owner-code-123' }), fetchImpl: b.fetch });
+    const ownerReq = (path: string, code?: string) => new Request(`https://aivisibilitychecker.netlify.app${path}`, { headers: code ? { 'x-access-code': code } : {} });
+    expect((await owner(ownerReq(`/api/owner/report?id=${checkId}`), ctx())).status).toBe(401);
+    expect((await owner(ownerReq(`/api/owner/report?id=${checkId}`, 'wrong-code-000'), ctx())).status).toBe(401);
+    expect((await owner(ownerReq('/api/owner/report?id=nope', 'owner-code-123'), ctx())).status).toBe(400);
+    const ownerRes = await owner(ownerReq(`/api/owner/report?id=${checkId}`, 'owner-code-123'), ctx());
+    expect(ownerRes.status).toBe(200);
+    const ownerData = (await ownerRes.json()) as { report: PublicFullReport; leads: { email: string; phone: string }[] };
+    expect(ownerData.leads).toEqual([expect.objectContaining({ email: 'owner@primer.example', phone: '070 123 456' })]);
+    const listRes = await owner(ownerReq('/api/owner/checks', 'owner-code-123'), ctx());
+    expect(((await listRes.json()) as { checks: { id: string }[] }).checks[0]!.id).toBe(checkId);
+    const r = ownerData.report;
     expect(r.checkId).toBe(checkId);
     expect(r.lang).toBe('en'); // the language the check ran in
     expect(r.prompts).toHaveLength(5);
@@ -505,9 +524,7 @@ describe('POST /api/public/lead', () => {
     expect((await handler(post('/api/public/lead', leadBody(checkId)), ctx())).status).toBe(200);
     const again = await handler(post('/api/public/lead', leadBody(checkId, { email: 'OWNER@primer.example' })), ctx());
     expect(again.status).toBe(200);
-    const data = (await again.json()) as { duplicate: boolean; report: { prompts: unknown[] } };
-    expect(data.duplicate).toBe(true);
-    expect(data.report.prompts).toHaveLength(5);
+    expect(await again.json()).toEqual({ ok: true, duplicate: true });
     expect(b.leads).toHaveLength(1);
   });
 

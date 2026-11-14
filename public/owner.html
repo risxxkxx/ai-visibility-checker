@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="mk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AI проверки и лидови</title>
+<style>
+  :root{--ink:#080a10;--muted:#656b78;--line:rgba(8,10,16,.14);--red:#d52020;--paper:#f7f7f8;--ok:#1b7f4b}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:#fff}
+  main{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+  h2{font-size:20px;margin:36px 0 10px;letter-spacing:-.01em}
+  h3{font-size:16px;margin:0 0 6px}
+  p{margin:0 0 10px}
+  .muted{color:var(--muted)}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:18px 0 8px}
+  label{display:grid;gap:4px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  input{font:inherit;padding:9px 11px;border:1px solid var(--line);min-width:240px}
+  button{font:inherit;font-weight:600;padding:10px 16px;border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer}
+  button.ghost{background:#fff;color:var(--ink)}
+  .err{color:var(--red);font-weight:600;margin:10px 0}
+  .scroll{overflow-x:auto;border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;min-width:760px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--paper)}
+  tr.row{cursor:pointer}
+  tr.row:hover,tr.row:focus{background:var(--paper);outline:none}
+  tr.has-lead td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+  .lead{font-weight:600}
+  .scores{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:14px 0}
+  .scores div{background:#fff;padding:16px}
+  .scores b{display:block;font-size:34px;letter-spacing:-.03em;line-height:1.1}
+  .card{border:1px solid var(--line);padding:16px 18px;margin:10px 0}
+  .pill{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border:1px solid var(--line);margin-bottom:8px}
+  .pill.high{background:var(--red);border-color:var(--red);color:#fff}
+  .pill.done,.pill.pass{color:var(--ok);border-color:var(--ok)}
+  .pill.fail{color:var(--red);border-color:var(--red)}
+  ol,ul{margin:6px 0 0;padding-left:20px}
+  pre{background:var(--paper);border:1px solid var(--line);padding:14px;overflow:auto;font-size:13px;white-space:pre-wrap;word-break:break-word}
+  .yes{color:var(--ok);font-weight:700}.no{color:var(--red);font-weight:700}
+  @media print{.bar,.noprint,#list{display:none!important}main{padding:0}}
+</style>
+</head>
+<body>
+<main>
+  <h1>AI проверки и лидови</h1>
+  <p class="muted">Само за сопственикот. Целосните извештаи од бесплатниот тест на agencynula.com.</p>
+  <div class="bar">
+    <label>Код за пристап<input id="code" type="password" autocomplete="current-password"></label>
+    <button id="load" type="button">Прикажи</button>
+  </div>
+  <p class="err" id="err" role="alert" hidden></p>
+  <section id="list" hidden>
+    <h2>Последни проверки</h2>
+    <p class="muted">Црвена линија лево = оставил контакт. Кликни на ред за целиот извештај.</p>
+    <div class="scroll"><table><thead><tr><th>Датум</th><th>Бизнис</th><th>Дејност · град</th><th>Видливост</th><th>Сајт</th><th>Контакт</th></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+  <section id="report" hidden></section>
+</main>
+<script src="/owner.js"></script>
+</body>
+</html>

@@ -279,6 +279,11 @@ Default model IDs were checked against the providers' documentation in November 
 
 ## Public mini test
 
+**What the visitor sees:** the scores, how many of 5 answers named them, which businesses AI named, and how many problems were found (a count, not the list). Leaving contact details sends a request to be contacted; it does not return a report.
+
+**What the owner sees:** `/owner.html` (behind `ACCESS_CODE`) lists every check with the contact details left for it and opens the full report: all recommendations with steps, per-question results, website checks, and schema/llms.txt drafts. It reads `GET /api/owner/checks` and `GET /api/owner/report?id=…`.
+
+
 A free, smaller version of the check for visitors of [agencynula.com](https://agencynula.com/ai-vidlivost/) (the page lives in the NULA website, not in this app). It has its own endpoints and protections; the internal tool above is unchanged and still needs `ACCESS_CODE`.
 
 | Endpoint | What it does |

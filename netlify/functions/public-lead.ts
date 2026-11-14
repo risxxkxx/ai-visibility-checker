@@ -5,7 +5,6 @@ import { checkOrigin, jsonWith, preflight } from '../../server/public/cors.ts';
 import { createSupabase, type SupabaseClient } from '../../server/public/supabase.ts';
 import { consentRecord } from '../../server/public/consent.ts';
 import { PUBLIC_LEAD_MAX_BYTES, readJson, validateLeadBody } from '../../server/public/validate.ts';
-import { buildPublicFullReport } from '../../src/lib/publicReport.ts';
 import type { VisibilityReport } from '../../src/lib/types.ts';
 
 type Env = Record<string, string | undefined>;
@@ -25,8 +24,8 @@ function isReport(value: unknown): value is VisibilityReport {
 
 /**
  * POST /api/public/lead  { checkId, email, name?, phone?, consent: true, lang? }
- * Stores the lead (with the exact consent text) and returns the full report for that check.
- * Sending the same e-mail for the same check twice is fine: the second time just returns the report.
+ * Stores the lead (with the exact consent text). The visitor gets a confirmation only; the full
+ * report is for the owner (GET /api/owner/report). Sending the same e-mail twice is fine.
  */
 export function createPublicLeadHandler(deps: PublicLeadDeps = {}) {
   const env = deps.env ?? (() => process.env);
@@ -89,9 +88,7 @@ export function createPublicLeadHandler(deps: PublicLeadDeps = {}) {
       return json(503, { error: 'Your details could not be saved. Try again later.', code: 'storage_unavailable' });
     }
 
-    // The report stays in the language the check ran in (its prompts are in that language).
-    const report = buildPublicFullReport(check.report, { checkId: check.id, lang: check.lang });
-    return json(200, { ok: true, duplicate: outcome === 'duplicate', report });
+    return json(200, { ok: true, duplicate: outcome === 'duplicate' });
   };
 }
 
